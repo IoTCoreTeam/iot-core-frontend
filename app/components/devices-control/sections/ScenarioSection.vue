@@ -154,6 +154,16 @@
                       <button
                         type="button"
                         class="w-8 h-8 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 cursor-pointer"
+                        @click="handleRunScenario(row)"
+                        title="Run"
+                        aria-label="Run scenario"
+                      >
+                        <BootstrapIcon name="play-fill" class="w-3 h-3" />
+                        <span class="sr-only">Run</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="w-8 h-8 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 cursor-pointer"
                         @click="openEditScenario(row)"
                         title="Edit"
                         aria-label="Edit scenario"
@@ -230,6 +240,7 @@ import {
   deleteWorkflow,
   fetchWorkflowDetail,
   fetchWorkflows,
+  runWorkflow,
   updateWorkflow,
 } from "@/composables/Scenario/handleWorkflow";
 
@@ -444,9 +455,7 @@ function openEditScenario(row: ScenarioRow) {
   scenarioForm.name = row.name ?? "";
   scenarioForm.status = row.status ?? "draft";
   scenarioForm.definition = JSON.stringify(row.definition ?? defaultDefinition(), null, 2);
-  scenarioForm.control_definition = row.control_definition
-    ? JSON.stringify(row.control_definition, null, 2)
-    : "";
+  scenarioForm.control_definition = JSON.stringify(row.control_definition ?? defaultDefinition(), null, 2);
   isScenarioModalOpen.value = true;
 }
 
@@ -479,6 +488,21 @@ async function deleteScenario(row: ScenarioRow) {
     message.error(error?.message ?? "Failed to delete scenario.");
   } finally {
     isScenarioLoading.value = false;
+  }
+}
+
+async function handleRunScenario(row: ScenarioRow) {
+  if (!import.meta.client) return;
+  const authorization = authStore.authorizationHeader;
+  if (!authorization) {
+    message.error("Missing authorization.");
+    return;
+  }
+  try {
+    await runWorkflow(row.id, authorization);
+    message.success("Scenario started.");
+  } catch (error: any) {
+    message.error(error?.message ?? "Failed to run scenario.");
   }
 }
 
@@ -518,7 +542,7 @@ function resetScenarioForm() {
   scenarioForm.name = "";
   scenarioForm.status = "draft";
   scenarioForm.definition = JSON.stringify(defaultDefinition(), null, 2);
-  scenarioForm.control_definition = "";
+  scenarioForm.control_definition = JSON.stringify(defaultDefinition(), null, 2);
 }
 
 function handleScenarioModalClose() {
@@ -529,12 +553,6 @@ function handleScenarioModalClose() {
 function parseDefinition(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return defaultDefinition();
-  return JSON.parse(trimmed) as Record<string, unknown>;
-}
-
-function parseControlDefinition(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
   return JSON.parse(trimmed) as Record<string, unknown>;
 }
 
@@ -560,17 +578,12 @@ async function saveScenario() {
   }
 
   let definition: Record<string, unknown>;
-  let controlDefinition: Record<string, unknown> | null;
+  let controlDefinition: Record<string, unknown>;
   try {
     definition = parseDefinition(scenarioForm.definition);
+    controlDefinition = parseDefinition(scenarioForm.control_definition);
   } catch (error: any) {
     message.error(error?.message ?? "Definition must be valid JSON.");
-    return;
-  }
-  try {
-    controlDefinition = parseControlDefinition(scenarioForm.control_definition);
-  } catch (error: any) {
-    message.error(error?.message ?? "Control definition must be valid JSON.");
     return;
   }
 
