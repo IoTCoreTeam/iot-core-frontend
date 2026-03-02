@@ -82,6 +82,17 @@ function handleMetricChange(value: string) {
   selectedMetricKey.value = value;
 }
 
+function normalizeActionType(value?: string | null) {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes("relay")) return "relay_control";
+  if (normalized.includes("digital")) return "digital";
+  if (normalized.includes("analog")) return "analog";
+  if (normalized.includes("servo")) return "servo_control";
+  return normalized;
+}
+
 async function fetchControlUrls() {
   if (!apiConfig.controlModule) return;
   const authorization = authStore.authorizationHeader;
@@ -95,7 +106,7 @@ async function fetchControlUrls() {
   try {
     const endpoint = `${apiConfig.controlModule.replace(/\/$/, "")}/control-urls?include=gateway&per_page=100`;
     const response = await fetch(endpoint, {
-      headers: {
+        headers: {
         Authorization: authorization,
         Accept: "application/json",
       },
@@ -135,9 +146,11 @@ async function handleExecuteControlUrl(widget: {
   }
 
   const state = nextState ? "on" : "off";
+  const actionType = normalizeActionType(widget.raw.input_type);
   await executeControlUrl(authorization, widget.id, {
     url,
     state,
+    action_type: actionType ?? undefined,
   });
 
 }

@@ -41,9 +41,6 @@
           class="w-full rounded border border-gray-300 bg-gray-50 px-3 py-2 font-mono text-[11px] text-gray-600 focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
           placeholder='{"version":1,"nodes":[],"edges":[]}'
         />
-        <p class="text-[10px] text-gray-400">
-          Paste a valid JSON definition. The builder will override this later.
-        </p>
       </div>
 
       <div class="space-y-1">

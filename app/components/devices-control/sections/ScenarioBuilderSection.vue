@@ -1,4 +1,10 @@
 <template>
+  <SingleMetricChart
+    class="mb-4 w-full"
+    :selected-metric-key="selectedMetricKey"
+    :selected-timeframe="selectedTimeframe"
+    @update:selected-metric-key="handleMetricChange"
+  />
   <section class="bg-white rounded border border-slate-200 p-4">
     <div class="border-b border-gray-200 pb-3">
       <div class="flex flex-wrap items-start justify-between gap-3">
@@ -38,6 +44,16 @@
           >
             <BootstrapIcon name="save" class="h-3 w-3" />
             Save
+          </button>
+          <span class="text-xs text-gray-400" aria-hidden="true">|</span>
+          <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="isRunningFlow"
+            @click="runFlow"
+          >
+            <BootstrapIcon name="play-fill" class="h-3 w-3" />
+            {{ isRunningFlow ? "Running..." : "Run" }}
           </button>
         </div>
       </div>
@@ -84,9 +100,11 @@
         v-model:edges="edges"
         :default-viewport="{ zoom: 1 }"
         :fit-view-on-init="true"
-        class="scenario-flow rounded bg-gray-100 min-h-[80vh]"
+        class="scenario-flow rounded bg-gray-50 min-h-[80vh]"
         @connect="handleConnect"
         @node-click="handleNodeClick"
+        @nodes-change="handleNodesChange"
+        @edges-change="handleEdgesChange"
       >
         <Background pattern-color="ffffff" :gap="20" :size="1" />
         <Controls :show-interactive="false" />
@@ -253,6 +271,10 @@ import {
   type Edge,
   type Node,
   useVueFlow,
+  applyEdgeChanges,
+  applyNodeChanges,
+  type EdgeChange,
+  type NodeChange,
 } from "@vue-flow/core";
 import { Background } from "@vue-flow/background";
 import { Controls } from "@vue-flow/controls";
@@ -263,9 +285,11 @@ import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 import BaseModal from "@/components/Modals/BaseModal.vue";
 import LoadingState from "@/components/common/LoadingState.vue";
+import SingleMetricChart from "@/components/SingleMetricChart.vue";
 import { apiConfig } from "~~/config/api";
 import { useAuthStore } from "~~/stores/auth";
 import { useMetrics } from "@/composables/useMetrics";
+import type { TimeframeKey } from "@/types/dashboard";
 import {
   canConnectFromNode,
   canCreateEnd,
@@ -274,6 +298,7 @@ import {
   validateFlow,
 } from "@/composables/Scenario/flowConstants";
 import { formatControlDefinition } from "@/composables/Scenario/formatControlDefinition";
+import { runWorkflow } from "@/composables/Scenario/handleWorkflow";
 
 type ScenarioRow = {
   id: string | number;
@@ -348,6 +373,8 @@ const nodes = ref<Node<NodeData>[]>([
 const edges = ref<Edge[]>([]);
 const { metrics: metricsRef, fetchMetrics } = useMetrics();
 const metrics = computed(() => metricsRef.value);
+const selectedMetricKey = ref<string>("");
+const selectedTimeframe = ref<TimeframeKey>("second");
 const authStore = useAuthStore();
 const controlModuleBase = computed(() =>
   (apiConfig.controlModule || "").replace(/\/$/, ""),
@@ -357,6 +384,7 @@ const isActionModalOpen = ref(false);
 const isConditionModalOpen = ref(false);
 const isConstantsModalOpen = ref(false);
 const isSavingNode = ref(false);
+const isRunningFlow = ref(false);
 const isFlowVisible = ref(false);
 const activeNode = ref<Node<NodeData> | null>(null);
 const actionForm = ref({
@@ -466,6 +494,14 @@ function handleConnect(connection: Connection) {
   });
 }
 
+function handleNodesChange(changes: NodeChange[]) {
+  nodes.value = applyNodeChanges(changes, nodes.value as any) as Node<NodeData>[];
+}
+
+function handleEdgesChange(changes: EdgeChange[]) {
+  edges.value = applyEdgeChanges(changes, edges.value as any) as Edge[];
+}
+
 function resetFlow() {
   nodes.value = [
     {
@@ -484,8 +520,33 @@ function saveFlow() {
     message.error(validation.message ?? "Flow validation failed.");
     return;
   }
+  const conditionCheck = validateConditionBranches();
+  if (!conditionCheck.ok) {
+    message.error(conditionCheck.message ?? "Condition branch validation failed.");
+    return;
+  }
   const controlDefinition = formatControlDefinition(nodes.value, edges.value);
   emit("save", { nodes: nodes.value, edges: edges.value, controlDefinition });
+}
+
+async function runFlow() {
+  if (!import.meta.client) return;
+  if (isRunningFlow.value) return;
+  const authorization = authStore.authorizationHeader;
+  if (!authorization) {
+    message.error("Missing authorization.");
+    return;
+  }
+  isRunningFlow.value = true;
+  message.info("Scenario is starting...");
+  try {
+    await runWorkflow(props.scenario.id, authorization);
+    message.success("Scenario ran successfully.");
+  } catch (error: any) {
+    message.error(error?.message ?? "Failed to run scenario.");
+  } finally {
+    isRunningFlow.value = false;
+  }
 }
 
 function handleNodeClick(event: { node: Node<NodeData> }) {
@@ -556,6 +617,10 @@ function updateNodeLabel(node: Node<NodeData>) {
     };
     return;
   }
+}
+
+function handleMetricChange(value: string) {
+  selectedMetricKey.value = value;
 }
 
 function applyDefinition(definition?: { nodes?: Node<NodeData>[]; edges?: Edge[] } | null) {
@@ -687,7 +752,41 @@ watch(
   },
   { deep: true },
 );
+
+watch(
+  metrics,
+  (value) => {
+    if (!selectedMetricKey.value && value.length > 0) {
+      selectedMetricKey.value = value[0]?.key ?? "";
+    }
+  },
+  { immediate: true },
+);
 const hasHydrated = ref(false);
+
+function validateConditionBranches() {
+  const conditionNodes = nodes.value.filter((node) => node.data?.kind === "condition");
+  if (!conditionNodes.length) {
+    return { ok: true };
+  }
+
+  for (const node of conditionNodes) {
+    const outgoing = edges.value.filter((edge) => edge.source === node.id);
+    const branches = new Set(
+      outgoing
+        .map((edge) => edge.data?.branch ?? edge.label)
+        .filter((value) => value === "true" || value === "false"),
+    );
+    if (!branches.has("true") || !branches.has("false")) {
+      return {
+        ok: false,
+        message: "Each Condition node must have both True and False branches.",
+      };
+    }
+  }
+
+  return { ok: true };
+}
 </script>
 
 <style scoped>

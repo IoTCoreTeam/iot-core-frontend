@@ -33,7 +33,6 @@
             class="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-500"
           >
             <th class="px-3 py-2 text-left font-semibold">Name</th>
-            <th class="px-3 py-2 text-center font-semibold">Status</th>
             <th class="px-3 py-2 text-center font-semibold">Registered</th>
             <th class="px-3 py-2 text-right font-semibold">Last Seen</th>
           </tr>
@@ -48,15 +47,6 @@
             <td class="px-3 py-3">
               <div class="font-medium">{{ device.name }}</div>
               <div class="text-[10px] text-gray-500">{{ device.id }}</div>
-            </td>
-
-            <td class="px-3 text-center">
-              <span
-                class="px-1.5 py-0.5 rounded text-xs font-semibold uppercase"
-                :class="statusColorClass(device.status)"
-              >
-                {{ formatStatus(device.status) }}
-              </span>
             </td>
 
             <td class="px-1.5 py-0.5 rounded text-xs font-semibold text-center uppercase">
@@ -82,6 +72,10 @@ import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 import DataBoxCard from "@/components/common/DataBoxCard.vue";
 import type { DeviceRow, DeviceRowStatus } from "@/types/devices-control";
 import { useLoadDataRow } from "@/composables/DeviceRegistration/loadDataRow";
+import {
+  createNodeCollectionsStore,
+  type GatewayEventPayload,
+} from "@/composables/DeviceRegistration/SSEHandle";
 import { apiConfig } from "~~/config/api";
 import { formatIotDateTime } from "~~/config/iot-time-format";
 
@@ -89,7 +83,7 @@ import { formatIotDateTime } from "~~/config/iot-time-format";
 const activeTab = ref<"gateway" | "node">("gateway");
 
 const gatewayRows = ref<DeviceRow[]>([]);
-const nodeRows = ref<DeviceRow[]>([]); // To be implemented similarly
+const nodeRows = ref<DeviceRow[]>([]);
 
 const {
   updateGatewayFromPayload,
@@ -100,6 +94,7 @@ const {
   nodeRows,
 });
 let gatewayEventSource: EventSource | null = null;
+const nodeCollectionsStore = createNodeCollectionsStore();
 
 // Derived State
 const filteredDevices = computed(() => {
@@ -146,8 +141,9 @@ function disconnectGatewaySse() {
 function handleGatewayUpdate(event: MessageEvent) {
   if (!event.data) return;
   try {
-    const payload = JSON.parse(event.data);
+    const payload = JSON.parse(event.data) as GatewayEventPayload;
     updateGatewayFromPayload(payload);
+    nodeCollectionsStore.updateFromGatewayPayload(payload, { nodeRows });
   } catch (error) {
     console.error("Failed to parse gateway SSE payload:", error);
   }

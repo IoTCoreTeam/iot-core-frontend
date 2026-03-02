@@ -1,39 +1,100 @@
 <template>
   <div class="w-full min-h-[80vh] bg-gray-50 p-4">
     <div class="mx-auto flex max-w-8xl flex-col gap-4">
-      <section class="grid grid-cols-1 gap-4 items-start">
-        <DevicesControlMetricDataWidgetBox />
-      </section>
+      <template v-if="isDashboardLoading">
+        <section class="grid grid-cols-1 gap-4 items-start">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div
+              v-for="card in 5"
+              :key="`metric-skeleton-${card}`"
+              class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+            >
+              <div class="animate-pulse space-y-3">
+                <div class="h-3 w-24 rounded bg-gray-200"></div>
+                <div class="h-6 w-28 rounded bg-gray-200"></div>
+                <div class="h-3 w-32 rounded bg-gray-100"></div>
+                <div class="h-3 w-20 rounded bg-gray-100"></div>
+              </div>
+            </div>
+          </div>
+        </section>
 
-      <section
-        class="grid grid-cols-1 gap-4 xl:grid-cols-5 items-start min-h-[40vh]"
-      >
-        <SingleMetricChart
-          class="xl:col-span-4"
-          :series="chartSeries"
-          :selected-metric-key="selectedMetricKey"
-          :selected-timeframe="selectedTimeframe"
-          @update:selected-metric-key="handleMetricChange"
-          @update:selected-timeframe="handleTimeframeChange"
-        />
-        <div class="xl:col-span-1 h-full">
-          <!-- ActiveDevicesPanel now handles its own data fetching via SSE -->
-          <DevicesControlActiveDevicesPanel />
-        </div>
-      </section>
+        <section
+          class="grid grid-cols-1 gap-4 xl:grid-cols-5 items-start min-h-[40vh]"
+        >
+          <div class="xl:col-span-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="animate-pulse space-y-4">
+              <div class="flex items-center gap-3">
+                <div class="h-8 w-40 rounded bg-gray-200"></div>
+                <div class="h-8 w-32 rounded bg-gray-200"></div>
+              </div>
+              <div class="h-64 w-full rounded bg-gray-100"></div>
+              <div class="h-4 w-48 rounded bg-gray-200"></div>
+            </div>
+          </div>
+          <div class="xl:col-span-1 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="animate-pulse space-y-4">
+              <div class="h-5 w-32 rounded bg-gray-200"></div>
+              <div class="h-8 w-full rounded bg-gray-100"></div>
+              <div class="h-8 w-full rounded bg-gray-100"></div>
+              <div class="h-8 w-full rounded bg-gray-100"></div>
+            </div>
+          </div>
+        </section>
 
-      <section class="grid grid-cols-1 gap-4 lg:grid-cols-2 items-start min-h-[40vh]">
-        <div class="lg:col-span-1 h-full">
-          <DevicesControlAutomationBatches :automations="automationBatches" />
-        </div>
-        <div class="lg:col-span-1 h-full">
-          <DevicesControlTypeDistributionPanel
-            :series="typeDistributionSeries"
-            :categories="typeDistributionCategories"
-            :is-loading="isTypeDistributionLoading"
+        <section class="grid grid-cols-1 gap-4 lg:grid-cols-2 items-start min-h-[40vh]">
+          <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="animate-pulse space-y-4">
+              <div class="h-5 w-40 rounded bg-gray-200"></div>
+              <div class="h-40 w-full rounded bg-gray-100"></div>
+              <div class="h-4 w-32 rounded bg-gray-200"></div>
+            </div>
+          </div>
+          <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="animate-pulse space-y-4">
+              <div class="h-5 w-44 rounded bg-gray-200"></div>
+              <div class="h-40 w-full rounded bg-gray-100"></div>
+              <div class="h-4 w-28 rounded bg-gray-200"></div>
+            </div>
+          </div>
+        </section>
+      </template>
+
+      <template v-else>
+        <section class="grid grid-cols-1 gap-4 items-start">
+          <DevicesControlMetricDataWidgetBox />
+        </section>
+
+        <section
+          class="grid grid-cols-1 gap-4 xl:grid-cols-5 items-start min-h-[40vh]"
+        >
+          <SingleMetricChart
+            class="xl:col-span-4"
+            :series="chartSeries"
+            :selected-metric-key="selectedMetricKey"
+            :selected-timeframe="selectedTimeframe"
+            @update:selected-metric-key="handleMetricChange"
+            @update:selected-timeframe="handleTimeframeChange"
           />
-        </div>
-      </section>
+          <div class="xl:col-span-1 h-full">
+            <!-- ActiveDevicesPanel now handles its own data fetching via SSE -->
+            <DevicesControlActiveDevicesPanel />
+          </div>
+        </section>
+
+        <section class="grid grid-cols-1 gap-4 lg:grid-cols-2 items-start min-h-[40vh]">
+          <div class="lg:col-span-1 h-full">
+            <DevicesControlAutomationBatches :automations="automationBatches" />
+          </div>
+          <div class="lg:col-span-1 h-full">
+            <DevicesControlTypeDistributionPanel
+              :series="typeDistributionSeries"
+              :categories="typeDistributionCategories"
+              :is-loading="isTypeDistributionLoading"
+            />
+          </div>
+        </section>
+      </template>
     </div>
   </div>
 </template>
@@ -80,6 +141,9 @@ const lastUpdatedLabel = computed(() =>
 const typeDistributionCategories = ref<string[]>([]);
 const typeDistributionSeries = ref<{ name: string; data: number[] }[]>([]);
 const isTypeDistributionLoading = ref(true);
+const isDashboardLoading = computed(
+  () => metrics.value.length === 0 || isTypeDistributionLoading.value,
+);
 
 const automationBatches = ref<AutomationBatchItem[]>([]);
 
