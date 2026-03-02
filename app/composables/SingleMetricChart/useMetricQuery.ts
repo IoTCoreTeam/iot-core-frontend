@@ -61,6 +61,9 @@ export function useMetricQuery(props: UseMetricQueryProps) {
 
     nodeIds.forEach(id => params.append("node_id", id));
     ids.forEach(id => params.append("sensor_id", id));
+    if (ids.length > 0) {
+      params.set("latest_by_sensor", "1");
+    }
     return params.toString();
   };
 

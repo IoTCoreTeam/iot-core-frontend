@@ -81,6 +81,41 @@
           </span>
         </div>
       </div>
+      <div class="mt-4 rounded border border-slate-200 bg-slate-50 px-4 py-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="text-xs font-semibold bg-white">Workflow Progress</div>
+          <button
+            type="button"
+            class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 hover:text-slate-700"
+            @click="resetWorkflowSteps"
+            aria-label="Clear workflow steps"
+            title="Clear"
+          >
+            <BootstrapIcon name="trash" class="h-3 w-3" />
+          </button>
+        </div>
+        <div class="mt-3 text-[11px]">
+          <a-steps
+            :current="currentWorkflowStep"
+            size="small"
+            :status="workflowOverallStatus"
+            direction="vertical"
+            :progress-dot="true"
+            class="text-[11px]"
+          >
+            <a-step
+              v-for="step in workflowSteps"
+              :key="step.key"
+              :title="step.title"
+              :status="step.status"
+              :description="step.description"
+            />
+          </a-steps>
+          <div v-if="workflowErrorMessage" class="mt-2 text-[11px] text-red-600">
+            {{ workflowErrorMessage }}
+          </div>
+        </div>
+      </div>
     </div>
 
     <div
@@ -122,21 +157,54 @@
     @request-close="closeActionModal"
   >
     <form class="space-y-4 text-xs text-gray-700" @submit.prevent="saveActionNode">
-      <div class="space-y-1">
-        <label class="text-xs font-semibold text-gray-700">Control URL</label>
-        <select
-          v-model="actionForm.control_url_id"
-          class="w-full rounded border border-gray-300 px-3 py-2 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-        >
-          <option value="">Select control</option>
-          <option
-            v-for="item in controlUrlOptions"
-            :key="item.id"
-            :value="item.id"
-          >
-            {{ item.name || item.url || item.id }}
-          </option>
-        </select>
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-semibold text-gray-700">Control URL</label>
+          <span class="text-[11px] text-gray-400">Click to select (toggle)</span>
+        </div>
+        <div class="max-h-56 overflow-auto rounded border border-gray-200">
+          <table class="min-w-full text-left text-xs">
+            <thead class="bg-slate-50 text-[11px] text-gray-500">
+              <tr>
+                <th class="px-3 py-2 font-medium">Name / URL</th>
+                <th class="px-3 py-2 font-medium">Node ID</th>
+                <th class="px-3 py-2 font-medium">Gateway ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="item in controlUrlOptions"
+                :key="item.id"
+                role="button"
+                tabindex="0"
+                class="border-t border-gray-100 transition-colors cursor-pointer"
+                :class="{
+                  'bg-blue-50': isControlUrlSelected(item.id),
+                  'hover:bg-gray-50': !isControlUrlSelected(item.id),
+                }"
+                @click="toggleControlUrlSelection(item.id)"
+              >
+                <td class="px-3 py-2">
+                  <div class="font-medium text-gray-700">
+                    {{ item.name || item.url || item.id }}
+                  </div>
+                  <div class="text-[11px] text-gray-400">{{ item.url || "—" }}</div>
+                </td>
+                <td class="px-3 py-2 text-gray-600">
+                  {{ resolveControlNodeId(item) }}
+                </td>
+                <td class="px-3 py-2 text-gray-600">
+                  {{ resolveControlGatewayId(item) }}
+                </td>
+              </tr>
+              <tr v-if="controlUrlOptions.length === 0">
+                <td colspan="3" class="px-3 py-3 text-center text-[11px] text-gray-400">
+                  No control URLs found.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div class="space-y-1">
@@ -180,17 +248,52 @@
     @request-close="closeConditionModal"
   >
     <form class="space-y-4 text-xs text-gray-700" @submit.prevent="saveConditionNode">
-      <div class="space-y-1">
-        <label class="text-xs font-semibold text-gray-700">Metric</label>
-        <select
-          v-model="conditionForm.metric_key"
-          class="w-full rounded border border-gray-300 px-3 py-2 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-        >
-          <option value="">Select metric</option>
-          <option v-for="metric in metrics" :key="metric.key" :value="metric.key">
-            {{ metric.title }}
-          </option>
-        </select>
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-semibold text-gray-700">Metric</label>
+          <span class="text-[11px] text-gray-400">Click to select (toggle)</span>
+        </div>
+        <div class="max-h-56 overflow-auto rounded border border-gray-200">
+          <table class="min-w-full text-left text-xs">
+            <thead class="bg-slate-50 text-[11px] text-gray-500">
+              <tr>
+                <th class="px-3 py-2 font-medium">Metric</th>
+                <th class="px-3 py-2 font-medium">Key</th>
+                <th class="px-3 py-2 font-medium">Node</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="metric in metrics"
+                :key="metric.key"
+                role="button"
+                tabindex="0"
+                class="border-t border-gray-100 transition-colors cursor-pointer"
+                :class="{
+                  'bg-blue-50': isMetricSelected(metric.key),
+                  'hover:bg-gray-50': !isMetricSelected(metric.key),
+                }"
+                @click="toggleMetricSelection(metric.key)"
+              >
+                <td class="px-3 py-2">
+                  <div class="font-medium text-gray-700">
+                    {{ metric.title }}
+                  </div>
+                  <div class="text-[11px] text-gray-400">{{ metric.subtitle || "—" }}</div>
+                </td>
+                <td class="px-3 py-2 text-gray-600">{{ metric.key }}</td>
+                <td class="px-3 py-2 text-gray-600">
+                  {{ resolveMetricNode(metric) }}
+                </td>
+              </tr>
+              <tr v-if="metrics.length === 0">
+                <td colspan="3" class="px-3 py-3 text-center text-[11px] text-gray-400">
+                  No metrics found.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div class="grid grid-cols-2 gap-3">
@@ -263,7 +366,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { message, Modal } from "ant-design-vue";
 import {
   VueFlow,
@@ -298,7 +401,6 @@ import {
   validateFlow,
 } from "@/composables/Scenario/flowConstants";
 import { formatControlDefinition } from "@/composables/Scenario/formatControlDefinition";
-import { runWorkflow } from "@/composables/Scenario/handleWorkflow";
 
 type ScenarioRow = {
   id: string | number;
@@ -357,6 +459,26 @@ type ControlUrlOption = {
   name?: string | null;
   url?: string | null;
   input_type?: string | null;
+  node?: {
+    id?: string | null;
+    external_id?: string | null;
+    name?: string | null;
+    gateway?: {
+      id?: string | null;
+      external_id?: string | null;
+      name?: string | null;
+    } | null;
+  } | null;
+};
+
+type WorkflowStepStatus = "wait" | "process" | "finish" | "error";
+
+type WorkflowStep = {
+  key: string;
+  title: string;
+  status: WorkflowStepStatus;
+  description?: string;
+  controlUrlId?: string | null;
 };
 
 const { addNodes, addEdges, project } = useVueFlow();
@@ -373,6 +495,25 @@ const nodes = ref<Node<NodeData>[]>([
 const edges = ref<Edge[]>([]);
 const { metrics: metricsRef, fetchMetrics } = useMetrics();
 const metrics = computed(() => metricsRef.value);
+const metricNodesByKey = ref<Record<string, string[]>>({});
+const workflowOverallStatus = computed(() => {
+  if (workflowSteps.value.some((step) => step.status === "error")) {
+    return "error";
+  }
+  if (hasWorkflowCompleted.value) {
+    return "finish";
+  }
+  return "process";
+});
+const controlUrlLabelMap = computed(() => {
+  const map = new Map<string, string>();
+  controlUrlOptions.value.forEach((item) => {
+    if (item?.id) {
+      map.set(item.id, item.name || item.url || item.id);
+    }
+  });
+  return map;
+});
 const selectedMetricKey = ref<string>("");
 const selectedTimeframe = ref<TimeframeKey>("second");
 const authStore = useAuthStore();
@@ -380,6 +521,15 @@ const controlModuleBase = computed(() =>
   (apiConfig.controlModule || "").replace(/\/$/, ""),
 );
 const controlUrlOptions = ref<ControlUrlOption[]>([]);
+const workflowSteps = ref<WorkflowStep[]>([]);
+const currentWorkflowStep = ref<number>(0);
+const workflowErrorMessage = ref<string | null>(null);
+const hasWorkflowCompleted = ref(false);
+const lastNodeStepIndex = ref<number | null>(null);
+const lastNodeContext = ref<{
+  label: string;
+  controlUrlId?: string | null;
+} | null>(null);
 const isActionModalOpen = ref(false);
 const isConditionModalOpen = ref(false);
 const isConstantsModalOpen = ref(false);
@@ -387,6 +537,7 @@ const isSavingNode = ref(false);
 const isRunningFlow = ref(false);
 const isFlowVisible = ref(false);
 const activeNode = ref<Node<NodeData> | null>(null);
+const workflowStreamAbortController = ref<AbortController | null>(null);
 const actionForm = ref({
   control_url_id: "",
   duration_seconds: 5,
@@ -396,6 +547,37 @@ const conditionForm = ref({
   operator: ">",
   value: 0,
 });
+const isMetricNodesLoading = ref(false);
+
+function isControlUrlSelected(id: string) {
+  return actionForm.value.control_url_id === id;
+}
+
+function toggleControlUrlSelection(id: string) {
+  actionForm.value.control_url_id = isControlUrlSelected(id) ? "" : id;
+}
+
+function resolveControlNodeId(item: ControlUrlOption) {
+  return item?.node?.external_id || item?.node?.id || "—";
+}
+
+function resolveControlGatewayId(item: ControlUrlOption) {
+  return item?.node?.gateway?.external_id || item?.node?.gateway?.id || "—";
+}
+
+function isMetricSelected(key: string) {
+  return conditionForm.value.metric_key === key;
+}
+
+function toggleMetricSelection(key: string) {
+  conditionForm.value.metric_key = isMetricSelected(key) ? "" : key;
+}
+
+function resolveMetricNode(metric: any) {
+  const nodes = metricNodesByKey.value[metric?.key ?? ""] ?? [];
+  if (!nodes.length) return "—";
+  return nodes.join(", ");
+}
 
 function handleDragStart(event: DragEvent, type: string) {
   if (!event.dataTransfer) return;
@@ -514,6 +696,61 @@ function resetFlow() {
   edges.value = [];
 }
 
+function resetWorkflowSteps(options?: { abort?: boolean } | PointerEvent) {
+  const normalized =
+    options && typeof options === "object" && "abort" in options
+      ? (options as { abort?: boolean })
+      : {};
+  if (normalized.abort && workflowStreamAbortController.value) {
+    workflowStreamAbortController.value.abort();
+    workflowStreamAbortController.value = null;
+  }
+  workflowSteps.value = [];
+  currentWorkflowStep.value = 0;
+  workflowErrorMessage.value = null;
+  hasWorkflowCompleted.value = false;
+  lastNodeStepIndex.value = null;
+  lastNodeContext.value = null;
+}
+
+function seedWorkflowSteps() {
+  workflowSteps.value = [
+    {
+      key: "check-devices",
+      title: "Check devices in workflow",
+      status: "process",
+    },
+    {
+      key: "shutdown-devices",
+      title: "Shutdown all devices",
+      status: "wait",
+    },
+  ];
+  currentWorkflowStep.value = 0;
+}
+
+function findStepByKey(key: string) {
+  return workflowSteps.value.find((step) => step.key === key) ?? null;
+}
+
+function updateStepStatus(key: string, status: WorkflowStepStatus, description?: string) {
+  const step = findStepByKey(key);
+  if (!step) return;
+  step.status = status;
+  if (description !== undefined) {
+    step.description = description;
+  }
+}
+
+function finalizeLastNodeStep(status: WorkflowStepStatus = "finish") {
+  if (lastNodeStepIndex.value === null) return;
+  const step = workflowSteps.value[lastNodeStepIndex.value];
+  if (!step) return;
+  if (step.status !== "error") {
+    step.status = status;
+  }
+}
+
 function saveFlow() {
   const validation = validateFlow(nodes.value, edges.value);
   if (!validation.ok) {
@@ -529,6 +766,275 @@ function saveFlow() {
   emit("save", { nodes: nodes.value, edges: edges.value, controlDefinition });
 }
 
+function ensureEndStep(status: WorkflowStepStatus = "finish") {
+  const existing = findStepByKey("end");
+  if (existing) {
+    existing.status = status;
+    return;
+  }
+  workflowSteps.value.push({
+    key: "end",
+    title: "End",
+    status,
+  });
+}
+
+function updateCurrentNodeDescription(description: string) {
+  if (lastNodeStepIndex.value === null) return;
+  const step = workflowSteps.value[lastNodeStepIndex.value];
+  if (!step) return;
+  step.description = description;
+}
+
+function appendActionPhaseStep(label: string, phase: "ON" | "OFF") {
+  const step: WorkflowStep = {
+    key: `action-${phase.toLowerCase()}-${workflowSteps.value.length}`,
+    title: `${label} ${phase}`,
+    status: "finish",
+    controlUrlId: lastNodeContext.value?.controlUrlId ?? null,
+  };
+  workflowSteps.value.push(step);
+  currentWorkflowStep.value = workflowSteps.value.length - 1;
+}
+
+function markCurrentNodeError(messageText: string) {
+  if (lastNodeStepIndex.value !== null) {
+    const step = workflowSteps.value[lastNodeStepIndex.value];
+    if (step) {
+      step.status = "error";
+    }
+  }
+  workflowErrorMessage.value = messageText;
+}
+
+function resolveActionLabelFromPayload(payload: Record<string, any>) {
+  const nodeId = payload.node_id;
+  if (nodeId) {
+    const flowNode = nodes.value.find((node) => node.id === nodeId);
+    if (flowNode) {
+      const nodeLabel = flowNode.data?.label ?? `Node ${nodeId}`;
+      return `Action: ${nodeLabel}`;
+    }
+  }
+  const controlUrlId = payload.control_url_id;
+  if (controlUrlId) {
+    const fallback = controlUrlLabelMap.value.get(controlUrlId) ?? controlUrlId;
+    return `Action: ${fallback}`;
+  }
+  return "Action";
+}
+
+function handleWorkflowEvent(payload: Record<string, any>) {
+  if (!payload || typeof payload !== "object") {
+    return;
+  }
+  const type = payload.type;
+  switch (type) {
+    case "devices_check_started": {
+      updateStepStatus("check-devices", "process", "Checking devices...");
+      currentWorkflowStep.value = 0;
+      break;
+    }
+    case "device_offline": {
+      const label = payload.device ?? "Unknown device";
+      updateStepStatus("check-devices", "error", `Offline: ${label}`);
+      workflowErrorMessage.value = `Device offline: ${label}`;
+      break;
+    }
+    case "devices_check_passed": {
+      updateStepStatus("check-devices", "finish", "All devices online");
+      updateStepStatus("shutdown-devices", "process", "Turning devices off...");
+      const shutdownIndex = workflowSteps.value.findIndex(
+        (step) => step.key === "shutdown-devices",
+      );
+      currentWorkflowStep.value = shutdownIndex >= 0 ? shutdownIndex : currentWorkflowStep.value;
+      break;
+    }
+    case "workflow_devices_off_started": {
+      const countText =
+        typeof payload.count === "number" ? ` (${payload.count})` : "";
+      updateStepStatus(
+        "shutdown-devices",
+        "process",
+        `Turning devices off${countText}`,
+      );
+      break;
+    }
+    case "workflow_device_off_failed": {
+      updateStepStatus(
+        "shutdown-devices",
+        "error",
+        `Failed to turn off ${payload.control_url_id ?? "device"}`,
+      );
+      workflowErrorMessage.value = "Failed to shutdown devices.";
+      break;
+    }
+    case "workflow_devices_ensured_off": {
+      updateStepStatus("shutdown-devices", "finish", "All devices are off");
+      break;
+    }
+    case "node_enter": {
+      finalizeLastNodeStep("finish");
+      const nodeId = payload.node_id;
+      const flowNode = nodes.value.find((node) => node.id === nodeId);
+      const nodeKind = (flowNode?.data?.kind ?? payload.type ?? "node") as string;
+      const nodeLabel = flowNode?.data?.label ?? `Node ${nodeId}`;
+      const titlePrefix =
+        nodeKind === "action"
+          ? "Action"
+          : nodeKind === "condition"
+            ? "Condition"
+            : "Node";
+      const controlUrlId = flowNode?.data?.control_url_id ?? null;
+      const label = `${titlePrefix}: ${nodeLabel}`;
+      const step: WorkflowStep = {
+        key: `node-${nodeId}-${workflowSteps.value.length}`,
+        title: label,
+        status: "process",
+        controlUrlId,
+      };
+      workflowSteps.value.push(step);
+      lastNodeStepIndex.value = workflowSteps.value.length - 1;
+      currentWorkflowStep.value = lastNodeStepIndex.value;
+      lastNodeContext.value = {
+        label,
+        controlUrlId,
+      };
+      break;
+    }
+    case "condition_evaluated": {
+      const resultLabel = payload.result ? "TRUE" : "FALSE";
+      const current = payload.current ?? "n/a";
+      const operator = payload.operator ?? "";
+      const threshold = payload.value ?? "n/a";
+      updateCurrentNodeDescription(
+        `Condition result: ${resultLabel} (${current} ${operator} ${threshold})`,
+      );
+      break;
+    }
+    case "action_on": {
+      updateCurrentNodeDescription("Action ON");
+      const label = lastNodeContext.value?.label ?? resolveActionLabelFromPayload(payload);
+      appendActionPhaseStep(label, "ON");
+      break;
+    }
+    case "action_off": {
+      updateCurrentNodeDescription("Action OFF");
+      const label = lastNodeContext.value?.label ?? resolveActionLabelFromPayload(payload);
+      appendActionPhaseStep(label, "OFF");
+      break;
+    }
+    case "action_on_failed":
+    case "action_off_failed":
+    case "action_device_offline": {
+      markCurrentNodeError(payload.error ?? "Action failed.");
+      break;
+    }
+    case "workflow_end_reached": {
+      finalizeLastNodeStep("finish");
+      ensureEndStep("finish");
+      break;
+    }
+    case "workflow_failed": {
+      markCurrentNodeError(payload.error ?? "Workflow failed.");
+      ensureEndStep("error");
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+function handleWorkflowStreamEvent(eventName: string, data: any) {
+  if (eventName === "workflow-event") {
+    handleWorkflowEvent(data as Record<string, any>);
+    return;
+  }
+  if (eventName === "workflow-complete") {
+    hasWorkflowCompleted.value = true;
+    workflowSteps.value.forEach((step) => {
+      if (step.status !== "error") {
+        step.status = "finish";
+      }
+    });
+    ensureEndStep("finish");
+    return;
+  }
+  if (eventName === "workflow-error") {
+    workflowErrorMessage.value = data?.message ?? "Workflow failed.";
+    markCurrentNodeError(workflowErrorMessage.value ?? "Workflow failed.");
+    ensureEndStep("error");
+    return;
+  }
+}
+
+function parseSseBlock(block: string) {
+  const lines = block.split(/\r?\n/);
+  let eventName = "message";
+  const dataLines: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("event:")) {
+      eventName = line.slice("event:".length).trim();
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice("data:".length).trim());
+    }
+  }
+
+  const dataText = dataLines.join("\n");
+  if (!eventName && !dataText) {
+    return null;
+  }
+  let data: any = dataText;
+  if (dataText) {
+    try {
+      data = JSON.parse(dataText);
+    } catch {
+      data = dataText;
+    }
+  }
+  return { eventName, data };
+}
+
+async function streamWorkflow(id: string | number, authorization: string) {
+  const base = controlModuleBase.value;
+  if (!base) throw new Error("API base URL is not configured.");
+  const controller = new AbortController();
+  workflowStreamAbortController.value = controller;
+
+  const response = await fetch(`${base}/workflows/${id}/run/stream`, {
+    method: "GET",
+    headers: {
+      Accept: "text/event-stream",
+      Authorization: authorization,
+    },
+    signal: controller.signal,
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error("Failed to start workflow stream.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split(/\n\n/);
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      const parsed = parseSseBlock(part);
+      if (!parsed) continue;
+      handleWorkflowStreamEvent(parsed.eventName, parsed.data);
+    }
+  }
+}
+
 async function runFlow() {
   if (!import.meta.client) return;
   if (isRunningFlow.value) return;
@@ -537,15 +1043,27 @@ async function runFlow() {
     message.error("Missing authorization.");
     return;
   }
+  resetWorkflowSteps({ abort: true });
+  seedWorkflowSteps();
   isRunningFlow.value = true;
+  workflowErrorMessage.value = null;
+  hasWorkflowCompleted.value = false;
   message.info("Scenario is starting...");
   try {
-    await runWorkflow(props.scenario.id, authorization);
-    message.success("Scenario ran successfully.");
+    await streamWorkflow(props.scenario.id, authorization);
+    if (hasWorkflowCompleted.value) {
+      message.success("Scenario ran successfully.");
+    } else if (workflowErrorMessage.value) {
+      message.error(workflowErrorMessage.value);
+    }
   } catch (error: any) {
-    message.error(error?.message ?? "Failed to run scenario.");
+    if (error?.name !== "AbortError") {
+      workflowErrorMessage.value = error?.message ?? "Failed to run scenario.";
+      message.error(workflowErrorMessage.value);
+    }
   } finally {
     isRunningFlow.value = false;
+    workflowStreamAbortController.value = null;
   }
 }
 
@@ -568,6 +1086,9 @@ function handleNodeClick(event: { node: Node<NodeData> }) {
       operator: node.data?.operator ?? ">",
       value: node.data?.value ?? 0,
     };
+    if (!isMetricNodesLoading.value && Object.keys(metricNodesByKey.value).length === 0) {
+      fetchMetricNodes();
+    }
     isConditionModalOpen.value = true;
     return;
   }
@@ -618,6 +1139,8 @@ function updateNodeLabel(node: Node<NodeData>) {
     return;
   }
 }
+
+// Device status SSE logic removed per UI-only step tracking requirements.
 
 function handleMetricChange(value: string) {
   selectedMetricKey.value = value;
@@ -701,7 +1224,7 @@ async function fetchControlUrls() {
     return;
   }
   try {
-    const endpoint = `${controlModuleBase.value}/control-urls?per_page=200`;
+    const endpoint = `${controlModuleBase.value}/control-urls?per_page=200&include=gateway`;
     const response = await fetch(endpoint, {
       headers: {
         Authorization: authorization,
@@ -723,9 +1246,37 @@ async function fetchControlUrls() {
   }
 }
 
+async function fetchMetricNodes() {
+  const base = (apiConfig.server || "").replace(/\/$/, "");
+  if (!base) return;
+  if (isMetricNodesLoading.value) return;
+  isMetricNodesLoading.value = true;
+  try {
+    const response = await fetch(`${base}/v1/metrics/nodes`, {
+      headers: { Accept: "application/json" },
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(payload?.message ?? "Failed to load metric nodes.");
+    }
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    const map: Record<string, string[]> = {};
+    rows.forEach((row: any) => {
+      if (!row?.key) return;
+      map[row.key] = Array.isArray(row.nodes) ? row.nodes : [];
+    });
+    metricNodesByKey.value = map;
+  } catch (error: any) {
+    console.error("Failed to load metric nodes", error);
+  } finally {
+    isMetricNodesLoading.value = false;
+  }
+}
+
 onMounted(() => {
   if (!import.meta.client) return;
   fetchMetrics();
+  fetchMetricNodes();
   fetchControlUrls();
   if (props.definition && !hasHydrated.value) {
     applyDefinition(props.definition);
@@ -734,6 +1285,13 @@ onMounted(() => {
   setTimeout(() => {
     isFlowVisible.value = true;
   }, 1000);
+});
+
+onBeforeUnmount(() => {
+  if (workflowStreamAbortController.value) {
+    workflowStreamAbortController.value.abort();
+    workflowStreamAbortController.value = null;
+  }
 });
 
 watch(
