@@ -1,1348 +1,685 @@
 <template>
   <section class="min-h-screen">
-    <a-tabs
-      v-model:activeKey="activeTab"
-      class="px-4 custom-tabs text-xs"
-    >
-      <a-tab-pane key="map" tab="Map">
-        <div v-if="activeTab === 'map'" class="pb-2">
-          <Transition name="slide-left" mode="out-in">
-            <MapConfig
-              v-if="isMapConfigOpen"
-              :map="selectedMap"
-              @back="closeMapConfig"
-            />
-            <div v-else class="flex flex-col gap-4 lg:flex-row lg:items-start">
+    <div class="mx-auto w-full">
+      <div class="flex flex-col lg:flex-row lg:items-start">
+        <div class="w-full lg:w-3/4 overflow-hidden border border-gray-200">
+          <ClientOnly>
+            <div class="relative h-[90vh] w-full">
               <div
-                :class="[
-                  'bg-white rounded border border-slate-200 overflow-hidden w-full lg:w-64 shrink-0 h-fit lg:sticky lg:top-4',
-                  { hidden: !isFilterVisible },
-                ]"
-              >
-                <div class="bg-gray-50 px-3 py-2 border-b border-gray-200 flex items-center justify-between">
-                  <div>
-                    <h4 class="text-xs font-semibold text-gray-700">Filters</h4>
-                    <p class="text-xs text-gray-500">
-                      Refine the {{ activeTitle.toLowerCase() }} list.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    class="text-xs text-gray-500 hover:text-gray-700 lg:hidden"
-                    @click="toggleFilters"
-                  >
-                    Close
-                  </button>
-                </div>
-                <AdvancedFilterPanel
-                  :fields="activeFilterFields"
-                  :model-value="activeFilters"
-                  :is-loading="isLoading"
-                  apply-label="Apply"
-                  reset-label="Reset"
-                  @update:modelValue="handleFilterModelUpdate"
-                  @apply="applyFilters"
-                  @reset="resetFilters"
-                />
+                v-if="isLoadingMap"
+                class="absolute inset-0 animate-pulse bg-gray-100"
+              ></div>
+              <div ref="mapEl" class="h-[90vh] w-full"></div>
+              <div class="absolute right-3 top-3 z-[450] w-fit">
+                <DataBoxCard
+                  :is-loading="false"
+                  :has-data="true"
+                  :columns="1"
+                  :padded="false"
+                >
+                  <template #default>
+                    <tr>
+                      <td class="px-2 py-2">
+                        <div class="flex items-center justify-end gap-2">
+                          <input
+                            v-model="latInput"
+                            type="number"
+                            step="any"
+                            min="-90"
+                            max="90"
+                            placeholder="Latitude"
+                            class="h-8 w-28 rounded border border-gray-300 bg-white px-2 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                          />
+                          <input
+                            v-model="lngInput"
+                            type="number"
+                            step="any"
+                            min="-180"
+                            max="180"
+                            placeholder="Longitude"
+                            class="h-8 w-28 rounded border border-gray-300 bg-white px-2 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                          />
+                          <button
+                            type="button"
+                            class="inline-flex items-center rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700"
+                            @click="zoomToPinned"
+                          >
+                            Zoom to Pin
+                          </button>
+                          <button
+                            type="button"
+                            class="inline-flex items-center rounded bg-gray-100 px-3 py-1 text-xs text-gray-700 hover:bg-gray-200"
+                            @click="zoomToInput"
+                          >
+                            Zoom to Input
+                          </button>
+                          <button
+                            type="button"
+                            class="inline-flex items-center rounded bg-gray-100 px-3 py-1 text-xs text-gray-700 hover:bg-gray-200"
+                            @click="resetMapView"
+                          >
+                            Reset
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </DataBoxCard>
               </div>
-
-              <DataBoxCard
-                :class="[
-                  'lg:self-start',
-                  isFilterVisible ? 'flex-1' : 'max-w-8xl w-full mx-auto',
-                ]"
-                :is-loading="isMapLoading"
-                :columns="mapTableColumns.length"
-                :has-data="displayedMapRows.length > 0"
-                :pagination="mapPagination"
-                :loading-text="activeLoadingText"
-                @prev-page="prevMapPage"
-                @next-page="nextMapPage"
-                @change-per-page="changeMapPerPage"
-              >
-                <template #header>
-                  <div class="flex items-center gap-2">
-                    <h3 class="text-gray-700 text-xs">
-                      {{ activeTitle }}
-                    </h3>
-                    <button
-                      type="button"
-                      class="text-xs text-gray-500 hover:text-gray-700 border border-gray-300 rounded px-2 py-0.5"
-                      @click="toggleFilters"
-                    >
-                      {{ isFilterVisible ? "Hide Filters" : "Show Filters" }}
-                    </button>
-                  </div>
-
-                  <div class="flex items-center gap-2">
-                    <div class="relative">
-                      <input
-                        v-model="searchKeyword"
-                        type="text"
-                        :placeholder="activeSearchPlaceholder"
-                        class="pl-5 pr-1 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-gray-400 focus:border-gray-400 bg-white w-52 text-xs cursor-text"
-                      />
-                      <BootstrapIcon
-                        name="search"
-                        class="absolute left-1 top-1.5 w-3 h-3 text-gray-400"
-                      />
-                    </div>
-                    <button
-                      @click="refreshRows"
-                      class="inline-flex items-center bg-gray-50 hover:bg-gray-100 text-gray-600 rounded px-3 py-1 text-xs border border-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
-                      :disabled="isMapLoading"
-                    >
-                      <BootstrapIcon
-                        name="arrow-clockwise"
-                        class="w-3 h-3 mr-1"
-                        :class="{ 'animate-spin': isMapLoading }"
-                      />
-                      {{ isMapLoading ? "Refreshing..." : "Refresh" }}
-                    </button>
-                    <button
-                      type="button"
-                      class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1 text-xs"
-                      @click="openAddModal"
-                    >
-                      <BootstrapIcon name="plus-lg" class="w-3 h-3 mr-1" />
-                      {{ activeAddLabel }}
-                    </button>
-                    <button
-                      type="button"
-                      class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1 text-xs"
-                      :disabled="isMapLoading"
-                      @click="exportRows"
-                    >
-                      <BootstrapIcon name="file-earmark-arrow-down" class="w-3 h-3 mr-1" />
-                      Export
-                    </button>
-                  </div>
-                </template>
-
-                <template #head>
-                  <tr class="bg-gray-50 border-b border-gray-200 text-xs text-gray-600 text-center">
-                    <th
-                      v-for="column in mapTableColumns"
-                      :key="column"
-                      class="px-2 py-2 font-normal text-gray-600 text-center align-middle leading-4"
-                    >
-                      {{ column }}
-                    </th>
-                  </tr>
-                </template>
-
-                <template #default>
-                  <tr
-                    v-for="row in displayedMapRows"
-                    :key="row.id"
-                    class="hover:bg-gray-50 transition-colors text-xs align-top border-b border-gray-100 py-1 text-center"
-                  >
-                    <td class="px-2 py-2 text-gray-800 text-center align-middle leading-4">
-                      <div>{{ row.id }}</div>
-                    </td>
-                    <td class="px-2 py-2 text-gray-700 text-left align-middle leading-4">
-                      <div>
-                        {{ row.name || "-" }}
-                      </div>
-                    </td>
-                    <td class="px-2 py-2 text-gray-700 text-left align-middle leading-4">
-                      <div>
-                        {{ row.area?.name || row.area_name || "Unknown" }}
-                      </div>
-                    </td>
-                    <td class="px-2 py-2 text-gray-700 text-left align-middle leading-4">
-                      {{ row.description }}
-                    </td>
-                    <td class="px-2 py-2 text-gray-700 text-center align-middle leading-4">
-                      {{ row.width_px ?? "-" }}
-                    </td>
-                    <td class="px-2 py-2 text-gray-700 text-center align-middle leading-4">
-                      {{ row.height_px ?? "-" }}
-                    </td>
-                    <td class="px-2 py-2 text-center align-middle">
-                      <div class="inline-flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          class="w-8 h-8 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 cursor-pointer"
-                          @click="openEditMap(row)"
-                          title="Edit"
-                          aria-label="Edit map"
-                        >
-                          <BootstrapIcon name="pencil-square" class="w-3 h-3" />
-                          <span class="sr-only">Edit</span>
-                        </button>
-                        <button
-                          type="button"
-                          class="w-8 h-8 inline-flex items-center justify-center rounded border border-red-200 text-red-600 hover:bg-red-50 cursor-pointer"
-                          @click="confirmDeleteMap(row)"
-                          title="Delete"
-                          aria-label="Delete map"
-                        >
-                          <BootstrapIcon name="trash" class="w-3 h-3" />
-                          <span class="sr-only">Delete</span>
-                        </button>
-                      </div>
-                    </td>
-                    <td class="px-2 py-2 text-center align-middle">
-                      <button
-                        type="button"
-                        class="w-8 h-8 inline-flex items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50 cursor-pointer"
-                        @click="openMapConfig(row)"
-                        aria-label="Open map config"
-                      >
-                        <BootstrapIcon name="info-circle" class="w-3 h-3" />
-                        <span class="sr-only">Config</span>
-                      </button>
-                    </td>
-                  </tr>
-                </template>
-
-                <template #empty> {{ activeEmptyText }} </template>
-
-                <template #footer>
-                  <span>Showing {{ displayedMapRows.length }} entries on this page.</span>
-                  <span>
-                    Total filtered:
-                    <span class="text-gray-600 font-medium">{{ mapPagination.total }}</span>
-                  </span>
-                </template>
-              </DataBoxCard>
             </div>
-          </Transition>
+          </ClientOnly>
         </div>
-      </a-tab-pane>
-      <a-tab-pane key="area" tab="Area">
-        <div v-if="activeTab === 'area'" class="pb-2">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
-            <div
-              :class="[
-                'bg-white rounded border border-slate-200 overflow-hidden w-full lg:w-64 shrink-0 h-fit lg:sticky lg:top-4',
-                { hidden: !isFilterVisible },
-              ]"
-            >
-              <div class="bg-gray-50 px-3 py-2 border-b border-gray-200 flex items-center justify-between">
-                <div>
-                  <h4 class="text-xs font-semibold text-gray-700">Filters</h4>
-                  <p class="text-xs text-gray-500">
-                    Refine the {{ activeTitle.toLowerCase() }} list.
-                  </p>
-                </div>
+
+        <DataBoxCard
+          class="w-full lg:w-1/4 shrink-0 lg:self-start"
+          :is-loading="isAreasLoading"
+          :columns="2"
+          :has-data="managedAreas.length > 0"
+        >
+          <template #header>
+            <div class="flex items-center justify-between w-full">
+              <h3 class="text-gray-700 text-xs font-semibold">Managed Areas</h3>
+              <div class="flex items-center gap-2">
                 <button
                   type="button"
-                  class="text-xs text-gray-500 hover:text-gray-700 lg:hidden"
-                  @click="toggleFilters"
+                  class="inline-flex items-center bg-gray-100 hover:bg-gray-200 text-gray-700 rounded px-2 py-0.5 text-xs border border-gray-300"
+                  :disabled="isAreasLoading"
+                  @click="refreshAreas"
                 >
-                  Close
+                  <BootstrapIcon
+                    name="arrow-clockwise"
+                    class="w-3 h-3 mr-1"
+                    :class="{ 'animate-spin': isAreasLoading }"
+                  />
+                  {{ isAreasLoading ? "Refreshing..." : "Refresh" }}
                 </button>
               </div>
-              <AdvancedFilterPanel
-                :fields="activeFilterFields"
-                :model-value="activeFilters"
-                :is-loading="isLoading"
-                apply-label="Apply"
-                reset-label="Reset"
-                @update:modelValue="handleFilterModelUpdate"
-                @apply="applyFilters"
-                @reset="resetFilters"
-              />
             </div>
+          </template>
 
-            <DataBoxCard
-              :class="[
-                'lg:self-start',
-                isFilterVisible ? 'flex-1' : 'max-w-8xl w-full mx-auto',
-              ]"
-              :is-loading="isAreaLoading"
-              :columns="areaTableColumns.length"
-              :has-data="displayedAreaRows.length > 0"
-              :pagination="areaPagination"
-              :loading-text="activeLoadingText"
-              @prev-page="prevAreaPage"
-              @next-page="nextAreaPage"
-              @change-per-page="changeAreaPerPage"
+          <template #head>
+            <tr class="bg-slate-50 border-b border-gray-200 text-xs text-gray-600">
+              <th class="px-2 py-2 font-normal text-center">Name</th>
+              <th class="px-2 py-2 font-normal text-center">Actions</th>
+            </tr>
+          </template>
+
+          <template #default>
+            <tr
+              v-for="area in managedAreas"
+              :key="area.id"
+              class="hover:bg-gray-50 transition-colors text-xs border-b border-gray-100"
             >
-              <template #header>
-                <div class="flex items-center gap-2">
-                  <h3 class="text-gray-700 text-xs">
-                    {{ activeTitle }}
-                  </h3>
+              <td class="px-2 py-2 text-gray-700 text-center">
+                {{ area.name || `Area ${area.id}` }}
+              </td>
+              <td class="px-2 py-2 text-center">
+                <div class="inline-flex items-center gap-2">
                   <button
                     type="button"
-                    class="text-xs text-gray-500 hover:text-gray-700 border border-gray-300 rounded px-2 py-0.5"
-                    @click="toggleFilters"
+                    class="w-8 h-8 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 cursor-pointer"
+                    @click="focusArea(area)"
+                    title="Focus"
+                    aria-label="Focus area"
                   >
-                    {{ isFilterVisible ? "Hide Filters" : "Show Filters" }}
+                    <BootstrapIcon name="geo-alt" class="w-3 h-3" />
                   </button>
                 </div>
+              </td>
+            </tr>
+          </template>
 
-                <div class="flex items-center gap-2">
-                  <div class="relative">
-                    <input
-                      v-model="searchKeyword"
-                      type="text"
-                      :placeholder="activeSearchPlaceholder"
-                      class="pl-5 pr-1 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-gray-400 focus:border-gray-400 bg-white w-52 text-xs cursor-text"
-                    />
-                      <BootstrapIcon
-                        name="search"
-                        class="absolute left-1 top-1.5 w-3 h-3 text-gray-400"
-                      />
-                  </div>
-                  <button
-                    @click="refreshRows"
-                    class="inline-flex items-center bg-gray-50 hover:bg-gray-100 text-gray-600 rounded px-3 py-1 text-xs border border-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
-                    :disabled="isAreaLoading"
-                  >
-                    <BootstrapIcon
-                      name="arrow-clockwise"
-                      class="w-3 h-3 mr-1"
-                      :class="{ 'animate-spin': isAreaLoading }"
-                    />
-                    {{ isAreaLoading ? "Refreshing..." : "Refresh" }}
-                  </button>
-                  <button
-                    type="button"
-                    class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1 text-xs"
-                    @click="openAddModal"
-                  >
-                    <BootstrapIcon name="plus-lg" class="w-3 h-3 mr-1" />
-                    {{ activeAddLabel }}
-                  </button>
-                  <button
-                    type="button"
-                    class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1 text-xs"
-                    :disabled="isAreaLoading"
-                    @click="exportRows"
-                  >
-                    <BootstrapIcon name="file-earmark-arrow-down" class="w-3 h-3 mr-1" />
-                    Export
-                  </button>
-                </div>
-              </template>
+          <template #empty> No managed areas yet. </template>
 
-              <template #head>
-                <tr class="bg-gray-50 border-b border-gray-200 text-xs text-gray-600 text-center">
-                  <th
-                    v-for="column in areaTableColumns"
-                    :key="column"
-                    class="px-2 py-2 font-normal text-gray-600 text-center align-middle leading-4"
-                  >
-                    {{ column }}
-                  </th>
-                </tr>
-              </template>
-
-              <template #default>
-                <tr
-                  v-for="row in displayedAreaRows"
-                  :key="row.id"
-                  class="hover:bg-gray-50 transition-colors text-xs align-top border-b border-gray-100 py-1 text-center"
-                >
-                  <td class="px-2 py-2 text-gray-800 text-center align-middle leading-4">
-                    <div>{{ row.id }}</div>
-                  </td>
-                  <td class="px-2 py-2 text-gray-700 text-center align-middle leading-4">
-                    <div>{{ row.name }}</div>
-                  </td>
-                  <td class="px-2 py-2 text-gray-700 text-center align-middle leading-4">
-                    {{ row.description || "-" }}
-                  </td>
-                  <td class="px-2 py-2 text-gray-700 text-center align-middle leading-4">
-                    {{ row.height_m ?? "-" }}
-                  </td>
-                  <td class="px-2 py-2 text-gray-600 text-center align-middle leading-4">
-                    {{ formatDateTime(row.created_at) }}
-                  </td>
-                  <td class="px-2 py-2 text-gray-600 text-center align-middle leading-4">
-                    {{ formatDateTime(row.updated_at) }}
-                  </td>
-                  <td class="px-2 py-2">
-                    <div class="inline-flex items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        class="w-8 h-8 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50"
-                        @click="openEditArea(row)"
-                        title="Edit"
-                        aria-label="Edit area"
-                      >
-                        <BootstrapIcon name="pencil-square" class="w-3 h-3" />
-                        <span class="sr-only">Edit</span>
-                      </button>
-                      <button
-                        type="button"
-                        class="w-8 h-8 inline-flex items-center justify-center rounded border border-red-200 text-red-600 hover:bg-red-50"
-                        @click="confirmDeleteArea(row)"
-                        title="Delete"
-                        aria-label="Delete area"
-                      >
-                        <BootstrapIcon name="trash" class="w-3 h-3" />
-                        <span class="sr-only">Delete</span>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              </template>
-
-              <template #empty> {{ activeEmptyText }} </template>
-
-              <template #footer>
-                <span>Showing {{ displayedAreaRows.length }} entries on this page.</span>
-                <span>
-                  Total filtered:
-                  <span class="text-gray-600 font-medium">{{ areaPagination.total }}</span>
-                </span>
-              </template>
-            </DataBoxCard>
-          </div>
-        </div>
-      </a-tab-pane>
-    </a-tabs>
-
-    <AddMapModal
-      v-if="isAddMapOpen"
-      @close="closeAddMapModal"
-      @save="handleMapSaved"
-    />
-    <MapDetailModal
-      v-if="isMapDetailOpen"
-      :map="editingMap"
-      @close="closeMapDetailModal"
-      @save="handleMapUpdated"
-    />
-    <AddAreaModal
-      v-if="isAddAreaOpen"
-      @close="closeAddAreaModal"
-      @save="handleAreaSaved"
-    />
-    <AreaDetailModal
-      v-if="isAreaDetailOpen"
-      :area="editingArea"
-      @close="closeAreaDetailModal"
-      @save="handleAreaUpdated"
-    />
+          <template #footer>
+            <span>Showing {{ managedAreas.length }} entries.</span>
+          </template>
+        </DataBoxCard>
+      </div>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch, onMounted } from "vue";
-import { message, Modal } from "ant-design-vue";
-import AdvancedFilterPanel, {
-  type FilterFieldRow,
-} from "@/components/common/AdvancedFilterPanel.vue";
-import DataBoxCard from "@/components/common/DataBoxCard.vue";
-import AddMapModal from "@/components/Modals/Maps/AddMapModal.vue";
-import AddAreaModal from "@/components/Modals/Maps/AddAreaModal.vue";
-import MapDetailModal from "@/components/Modals/Maps/MapDetailModal.vue";
-import AreaDetailModal from "@/components/Modals/Maps/AreaDetailModal.vue";
-import MapConfig from "@/components/devices-control/sections/map-section/MapConfig.vue";
 import type { Section } from "@/types/devices-control";
+import "leaflet/dist/leaflet.css";
+import "leaflet-draw/dist/leaflet.draw.css";
+import { onMounted, onBeforeUnmount, ref, nextTick, watch } from "vue";
+import { message } from "ant-design-vue";
 import { apiConfig } from "~~/config/api";
 import { useAuthStore } from "~~/stores/auth";
-import { formatIotDateTime } from "~~/config/iot-time-format";
+import DataBoxCard from "@/components/common/DataBoxCard.vue";
 
 defineProps<{ section: Section }>();
 
-const activeTab = ref<"map" | "area">("map");
-const mapTableColumns = [
-  "ID",
-  "Name",
-  "Area",
-  "Description",
-  "Width (px)",
-  "Height (px)",
-  "Actions",
-  "Config",
-];
-const areaTableColumns = [
-  "ID",
-  "Name",
-  "Description",
-  "Height (m)",
-  "Created At",
-  "Updated At",
-  "Actions",
-];
-const isFilterVisible = ref(true);
-const searchKeyword = ref("");
-const isAddMapOpen = ref(false);
-const isAddAreaOpen = ref(false);
-const isMapDetailOpen = ref(false);
-const isAreaDetailOpen = ref(false);
-const isSavingMap = ref(false);
-const isSavingArea = ref(false);
-const isMapLoading = ref(false);
-const isAreaLoading = ref(false);
-const editingMap = ref<MapRow | null>(null);
-const editingArea = ref<AreaRow | null>(null);
-const isMapConfigOpen = ref(false);
-const selectedMap = ref<MapRow | null>(null);
+const mapEl = ref<HTMLDivElement | null>(null);
+const isLoadingMap = ref(true);
+const latInput = ref<string>("");
+const lngInput = ref<string>("");
+const isAreasLoading = ref(false);
+const managedAreas = ref<any[]>([]);
+let mapInstance: import("leaflet").Map | null = null;
+let drawnItems: import("leaflet").FeatureGroup | null = null;
+let leaflet: typeof import("leaflet") | null = null;
+let popupCounter = 0;
+let hasLoadedAreas = false;
+let pinnedMarker: import("leaflet").Marker | null = null;
+const PIN_KEY = "iotcore.map.pinnedLocation";
 
-const mapModuleBase = `${(apiConfig.controlModule || "").replace(/\/$/, "")}/map-module`;
 const authStore = useAuthStore();
 
-type MapRow = {
-  id: number;
+const pendingStyle = {
+  color: "#9ca3af",
+  weight: 2,
+  fillColor: "#d1d5db",
+  fillOpacity: 0.35,
+};
+
+const savedStyle = {
+  color: "#3b82f6",
+  weight: 2,
+  fillColor: "#60a5fa",
+  fillOpacity: 0.25,
+};
+
+
+type ManagedAreaPayload = {
   name?: string | null;
-  area_id?: number | null;
-  description?: string | null;
-  width_px?: number | null;
-  height_px?: number | null;
-  scale_m_per_px?: number | null;
-  image_url?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  area?: { id?: number | null; name?: string | null } | null;
-  area_name?: string | null;
+  geom_type: "polygon" | "rectangle";
+  geometry: Record<string, any>;
+  bbox?: [number, number, number, number] | null;
 };
 
-type AreaRow = {
-  id: number;
-  name: string;
-  description?: string | null;
-  height_m?: number | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
-
-type MapFormPayload = {
-  area_id: string;
-  name: string;
-  image_url: string;
-  width_px: string;
-  height_px: string;
-  scale_m_per_px: string;
-  description: string;
-};
-
-type AreaFormPayload = {
-  name: string;
-  description: string;
-  height_m: string;
-};
-
-type MapUpdatePayload = MapFormPayload & { id?: number | null };
-type AreaUpdatePayload = AreaFormPayload & { id?: number | null };
-
-const mapDefaultFilters = {
-  id: "",
-  name: "",
-  area_id: "",
-  description: "",
-  width_px: "",
-  height_px: "",
-};
-
-const areaDefaultFilters = {
-  id: "",
-  name: "",
-  description: "",
-  height_m: "",
-};
-
-const mapFilters = reactive({ ...mapDefaultFilters });
-const areaFilters = reactive({ ...areaDefaultFilters });
-const appliedMapFilters = ref({ ...mapDefaultFilters });
-const appliedAreaFilters = ref({ ...areaDefaultFilters });
-
-const mapRows = ref<MapRow[]>([]);
-const areaRows = ref<AreaRow[]>([]);
-const mapPagination = ref({ page: 1, perPage: 10, lastPage: 1, total: 0 });
-const areaPagination = ref({ page: 1, perPage: 10, lastPage: 1, total: 0 });
-
-const activeFilters = computed(() =>
-  activeTab.value === "map" ? mapFilters : areaFilters
-);
-
-const mapFilterFields: FilterFieldRow[] = [
-  [
-    {
-      key: "id",
-      label: "ID",
-      type: "text",
-      placeholder: "e.g. 10",
-    },
-  ],
-  [
-    {
-      key: "name",
-      label: "Name",
-      type: "text",
-      placeholder: "e.g. Main floor",
-    },
-  ],
-  [
-    {
-      key: "area_id",
-      label: "Area ID",
-      type: "text",
-      placeholder: "e.g. 1",
-    },
-  ],
-  [
-    {
-      key: "description",
-      label: "Description",
-      type: "text",
-      placeholder: "e.g. Factory hall map",
-    },
-  ],
-  [
-    {
-      key: "width_px",
-      label: "Width (px)",
-      type: "text",
-      placeholder: "e.g. 1200",
-    },
-  ],
-  [
-    {
-      key: "height_px",
-      label: "Height (px)",
-      type: "text",
-      placeholder: "e.g. 800",
-    },
-  ],
-];
-
-const areaFilterFields: FilterFieldRow[] = [
-  [
-    {
-      key: "id",
-      label: "ID",
-      type: "text",
-      placeholder: "e.g. 1",
-    },
-  ],
-  [
-    {
-      key: "name",
-      label: "Name",
-      type: "text",
-      placeholder: "e.g. Production Zone",
-    },
-  ],
-  [
-    {
-      key: "description",
-      label: "Description",
-      type: "text",
-      placeholder: "e.g. Main assembly area",
-    },
-  ],
-  [
-    {
-      key: "height_m",
-      label: "Height (m)",
-      type: "text",
-      placeholder: "e.g. 3.5",
-    },
-  ],
-  [
-  ],
-];
-
-const activeFilterFields = computed(() =>
-  activeTab.value === "map" ? mapFilterFields : areaFilterFields
-);
-const activeTitle = computed(() =>
-  activeTab.value === "map" ? "Maps" : "Areas"
-);
-const activeSearchPlaceholder = computed(() =>
-  activeTab.value === "map" ? "Search map..." : "Search area..."
-);
-const activeEmptyText = computed(() =>
-  activeTab.value === "map"
-    ? "No maps to display yet."
-    : "No areas to display yet."
-);
-const activeLoadingText = computed(() =>
-  activeTab.value === "map" ? "Loading maps..." : "Loading areas..."
-);
-const activeAddLabel = computed(() =>
-  activeTab.value === "map" ? "New Map" : "New Area"
-);
-const isLoading = computed(() =>
-  activeTab.value === "map" ? isMapLoading.value : isAreaLoading.value
-);
-const displayedMapRows = computed(() => mapRows.value);
-const displayedAreaRows = computed(() => areaRows.value);
-
-function toggleFilters() {
-  isFilterVisible.value = !isFilterVisible.value;
-}
-
-function handleFilterModelUpdate(value: Record<string, string>) {
-  Object.assign(activeFilters.value, value);
-}
-
-function applyFilters(payload?: Record<string, string>) {
-  if (payload) {
-    Object.assign(activeFilters.value, payload);
-  }
-  if (activeTab.value === "map") {
-    appliedMapFilters.value = { ...mapFilters };
-    mapPagination.value.page = 1;
-    fetchMaps();
-    return;
-  }
-  appliedAreaFilters.value = { ...areaFilters };
-  areaPagination.value.page = 1;
-  fetchAreas();
-}
-
-function resetFilters() {
-  if (activeTab.value === "map") {
-    Object.assign(mapFilters, mapDefaultFilters);
-    appliedMapFilters.value = { ...mapDefaultFilters };
-    mapPagination.value.page = 1;
-    fetchMaps();
-  } else {
-    Object.assign(areaFilters, areaDefaultFilters);
-    appliedAreaFilters.value = { ...areaDefaultFilters };
-    areaPagination.value.page = 1;
-    fetchAreas();
-  }
-}
-
-function refreshRows() {
-  if (isLoading.value) return;
-  if (activeTab.value === "map") {
-    fetchMaps();
-    return;
-  }
-  fetchAreas();
-}
-
-function exportRows() {
-  if (!import.meta.client) return;
-  if (activeTab.value === "map") {
-    exportMaps();
-    return;
-  }
-  exportAreas();
-}
-
-function openAddMapModal() {
-  isAddMapOpen.value = true;
-}
-
-function closeAddMapModal() {
-  isAddMapOpen.value = false;
-}
-
-function openEditMap(row: MapRow) {
-  editingMap.value = { ...row };
-  isMapDetailOpen.value = true;
-}
-
-function openMapConfig(row: MapRow) {
-  selectedMap.value = { ...row };
-  isMapConfigOpen.value = true;
-}
-
-function closeMapConfig() {
-  isMapConfigOpen.value = false;
-  selectedMap.value = null;
-}
-
-
-function closeMapDetailModal() {
-  isMapDetailOpen.value = false;
-  editingMap.value = null;
-}
-
-function normalizeOptionalNumber(value: string) {
-  if (!value) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function normalizeOptionalInt(value: string) {
-  if (!value) return null;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function buildHeaders() {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
+const getAuthHeaders = () => {
   const authorization = authStore.authorizationHeader;
-  if (authorization) {
-    headers.Authorization = authorization;
+  if (!authorization) {
+    throw new Error("Missing access token. Please sign in again.");
   }
-  return headers;
-}
-
-function normalizeText(value: string | null | undefined) {
-  return (value ?? "").toString().trim();
-}
-
-function mapQueryParams() {
-  const params = new URLSearchParams();
-  params.set("page", String(mapPagination.value.page));
-  params.set("per_page", String(mapPagination.value.perPage));
-  const filters = appliedMapFilters.value;
-  if (filters.id) params.set("id", normalizeText(filters.id));
-  if (filters.name) params.set("name", normalizeText(filters.name));
-  if (filters.area_id) params.set("area_id", normalizeText(filters.area_id));
-  if (filters.description) params.set("description", normalizeText(filters.description));
-  if (filters.width_px) params.set("width_px", normalizeText(filters.width_px));
-  if (filters.height_px) params.set("height_px", normalizeText(filters.height_px));
-  const keyword = normalizeText(searchKeyword.value);
-  if (keyword) params.set("keyword", keyword);
-  return params;
-}
-
-function areaQueryParams() {
-  const params = new URLSearchParams();
-  params.set("page", String(areaPagination.value.page));
-  params.set("per_page", String(areaPagination.value.perPage));
-  const filters = appliedAreaFilters.value;
-  if (filters.id) params.set("id", normalizeText(filters.id));
-  if (filters.name) params.set("name", normalizeText(filters.name));
-  if (filters.description) params.set("description", normalizeText(filters.description));
-  if (filters.height_m) params.set("height_m", normalizeText(filters.height_m));
-  const keyword = normalizeText(searchKeyword.value);
-  if (keyword) params.set("keyword", keyword);
-  return params;
-}
-
-function normalizeMapRow(raw: MapRow): MapRow {
   return {
-    ...raw,
-    area_id: raw.area_id ?? raw.area?.id ?? null,
-    area_name: raw.area?.name ?? raw.area_name ?? null,
+    Authorization: authorization,
+    "Content-Type": "application/json",
   };
-}
+};
 
-function applyPaginationFromResponse(
-  pagination: { page: number; perPage: number; lastPage: number; total: number },
-  payload: any
-) {
-  if (!payload) {
-    pagination.total = pagination.total || 0;
-    pagination.lastPage = Math.max(1, Math.ceil(pagination.total / pagination.perPage));
-    return;
+const applyLayerStyle = (layer: any, style: Record<string, any>) => {
+  if (layer?.setStyle) {
+    layer.setStyle(style);
   }
-  if (Array.isArray(payload)) {
-    pagination.total = payload.length;
-    pagination.page = 1;
-    pagination.lastPage = 1;
-    pagination.perPage = payload.length || pagination.perPage;
-    return;
+};
+
+const getLayerBounds = (layer: any) => {
+  if (!layer?.getBounds) return null;
+  const bounds = layer.getBounds();
+  if (!bounds) return null;
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  return [sw.lng, sw.lat, ne.lng, ne.lat] as [number, number, number, number];
+};
+
+const resolveGeomType = (layer: any): ManagedAreaPayload["geom_type"] => {
+  if (leaflet && layer instanceof leaflet.Rectangle) {
+    return "rectangle";
   }
-  if (typeof payload !== "object") {
-    return;
-  }
-  const currentPage = Number(payload.current_page ?? payload.meta?.current_page);
-  const lastPage = Number(payload.last_page ?? payload.meta?.last_page);
-  const perPage = Number(payload.per_page ?? payload.meta?.per_page);
-  const total = Number(payload.total ?? payload.meta?.total);
-  if (Number.isFinite(currentPage) && currentPage > 0) {
-    pagination.page = currentPage;
-  }
-  if (Number.isFinite(perPage) && perPage > 0) {
-    pagination.perPage = perPage;
-  }
-  if (Number.isFinite(lastPage) && lastPage > 0) {
-    pagination.lastPage = lastPage;
-  }
-  if (Number.isFinite(total) && total >= 0) {
-    pagination.total = total;
-  }
-}
+  return "polygon";
+};
 
-async function fetchMaps() {
-  if (!import.meta.client) return;
-  if (!mapModuleBase || mapModuleBase.startsWith("/")) {
-    return;
-  }
-  isMapLoading.value = true;
-  try {
-    const params = mapQueryParams();
-    const response = await fetch(`${mapModuleBase}/maps?${params.toString()}`, {
-      headers: buildHeaders(),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data?.message ?? `Failed to load maps (${response.status}).`);
-    }
-    const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-    mapRows.value = rows.map((row: MapRow) => normalizeMapRow(row));
-    applyPaginationFromResponse(mapPagination.value, data);
-  } catch (error: any) {
-    message.error(error?.message ?? "Failed to load maps.");
-  } finally {
-    isMapLoading.value = false;
-  }
-}
-
-async function fetchAreas() {
-  if (!import.meta.client) return;
-  if (!mapModuleBase || mapModuleBase.startsWith("/")) {
-    return;
-  }
-  isAreaLoading.value = true;
-  try {
-    const params = areaQueryParams();
-    const response = await fetch(`${mapModuleBase}/areas?${params.toString()}`, {
-      headers: buildHeaders(),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data?.message ?? `Failed to load areas (${response.status}).`);
-    }
-    const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-    areaRows.value = rows;
-    applyPaginationFromResponse(areaPagination.value, data);
-  } catch (error: any) {
-    message.error(error?.message ?? "Failed to load areas.");
-  } finally {
-    isAreaLoading.value = false;
-  }
-}
-
-async function handleMapSaved(payload: MapFormPayload) {
-  if (!import.meta.client) return;
-  if (!mapModuleBase || mapModuleBase.startsWith("/")) {
-    message.error("API base URL is not configured.");
-    return;
-  }
-  if (isSavingMap.value) return;
-
-  const areaId = Number.parseInt(payload.area_id, 10);
-  if (!Number.isFinite(areaId) || areaId <= 0) {
-    message.error("Area ID must be a valid number.");
-    return;
-  }
-
-  isSavingMap.value = true;
-  try {
-    const response = await fetch(`${mapModuleBase}/maps`, {
-      method: "POST",
-      headers: buildHeaders(),
-      body: JSON.stringify({
-        area_id: areaId,
-        name: payload.name,
-        image_url: payload.image_url || null,
-        width_px: normalizeOptionalInt(payload.width_px),
-        height_px: normalizeOptionalInt(payload.height_px),
-        scale_m_per_px: normalizeOptionalNumber(payload.scale_m_per_px),
-        description: payload.description || null,
-      }),
-    });
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const validationErrors = data?.errors;
-      if (validationErrors) {
-        const firstError = Object.values(validationErrors)
-          .flat()
-          .at(0) as string | undefined;
-        throw new Error(firstError ?? "Validation error. Please check the form.");
-      }
-      throw new Error(data?.message ?? `Failed to create map (${response.status}).`);
-    }
-
-    message.success("Map created successfully.");
-    fetchMaps();
-  } catch (error: any) {
-    const errorMessage = error?.message ?? "Failed to create map.";
-    message.error(errorMessage);
-  } finally {
-    isSavingMap.value = false;
-  }
-}
-
-function openAddAreaModal() {
-  isAddAreaOpen.value = true;
-}
-
-function closeAddAreaModal() {
-  isAddAreaOpen.value = false;
-}
-
-function openEditArea(row: AreaRow) {
-  editingArea.value = { ...row };
-  isAreaDetailOpen.value = true;
-}
-
-function closeAreaDetailModal() {
-  isAreaDetailOpen.value = false;
-  editingArea.value = null;
-}
-
-async function handleAreaSaved(payload: AreaFormPayload) {
-  if (!import.meta.client) return;
-  if (!mapModuleBase || mapModuleBase.startsWith("/")) {
-    message.error("API base URL is not configured.");
-    return;
-  }
-  if (isSavingArea.value) return;
-
-  isSavingArea.value = true;
-  try {
-    const response = await fetch(`${mapModuleBase}/areas`, {
-      method: "POST",
-      headers: buildHeaders(),
-      body: JSON.stringify({
-        name: payload.name,
-        description: payload.description || null,
-        height_m: normalizeOptionalNumber(payload.height_m),
-      }),
-    });
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const validationErrors = data?.errors;
-      if (validationErrors) {
-        const firstError = Object.values(validationErrors)
-          .flat()
-          .at(0) as string | undefined;
-        throw new Error(firstError ?? "Validation error. Please check the form.");
-      }
-      throw new Error(data?.message ?? `Failed to create area (${response.status}).`);
-    }
-
-    message.success("Area created successfully.");
-    fetchAreas();
-  } catch (error: any) {
-    const errorMessage = error?.message ?? "Failed to create area.";
-    message.error(errorMessage);
-  } finally {
-    isSavingArea.value = false;
-  }
-}
-
-async function handleMapUpdated(payload: MapUpdatePayload) {
-  if (!import.meta.client) return;
-  if (!mapModuleBase || mapModuleBase.startsWith("/")) {
-    message.error("API base URL is not configured.");
-    return;
-  }
-  if (isSavingMap.value) return;
-
-  const mapId = payload.id;
-  if (!mapId) {
-    message.error("Map ID is missing.");
-    return;
-  }
-
-  const areaId = Number.parseInt(payload.area_id, 10);
-  if (!Number.isFinite(areaId) || areaId <= 0) {
-    message.error("Area ID must be a valid number.");
-    return;
-  }
-
-  isSavingMap.value = true;
-  try {
-    const response = await fetch(`${mapModuleBase}/maps/${mapId}`, {
-      method: "PUT",
-      headers: buildHeaders(),
-      body: JSON.stringify({
-        name: payload.name || null,
-        area_id: areaId,
-        image_url: payload.image_url || null,
-        width_px: normalizeOptionalInt(payload.width_px),
-        height_px: normalizeOptionalInt(payload.height_px),
-        scale_m_per_px: normalizeOptionalNumber(payload.scale_m_per_px),
-        description: payload.description || null,
-      }),
-    });
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const validationErrors = data?.errors;
-      if (validationErrors) {
-        const firstError = Object.values(validationErrors)
-          .flat()
-          .at(0) as string | undefined;
-        throw new Error(firstError ?? "Validation error. Please check the form.");
-      }
-      throw new Error(data?.message ?? `Failed to update map (${response.status}).`);
-    }
-
-    message.success("Map updated successfully.");
-    fetchMaps();
-  } catch (error: any) {
-    const errorMessage = error?.message ?? "Failed to update map.";
-    message.error(errorMessage);
-  } finally {
-    isSavingMap.value = false;
-  }
-}
-
-async function handleAreaUpdated(payload: AreaUpdatePayload) {
-  if (!import.meta.client) return;
-  if (!mapModuleBase || mapModuleBase.startsWith("/")) {
-    message.error("API base URL is not configured.");
-    return;
-  }
-  if (isSavingArea.value) return;
-
-  const areaId = payload.id;
-  if (!areaId) {
-    message.error("Area ID is missing.");
-    return;
-  }
-
-  isSavingArea.value = true;
-  try {
-    const response = await fetch(`${mapModuleBase}/areas/${areaId}`, {
-      method: "PUT",
-      headers: buildHeaders(),
-      body: JSON.stringify({
-        name: payload.name,
-        description: payload.description || null,
-        height_m: normalizeOptionalNumber(payload.height_m),
-      }),
-    });
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const validationErrors = data?.errors;
-      if (validationErrors) {
-        const firstError = Object.values(validationErrors)
-          .flat()
-          .at(0) as string | undefined;
-        throw new Error(firstError ?? "Validation error. Please check the form.");
-      }
-      throw new Error(data?.message ?? `Failed to update area (${response.status}).`);
-    }
-
-    message.success("Area updated successfully.");
-    fetchAreas();
-  } catch (error: any) {
-    const errorMessage = error?.message ?? "Failed to update area.";
-    message.error(errorMessage);
-  } finally {
-    isSavingArea.value = false;
-  }
-}
-
-function prevMapPage() {
-  if (mapPagination.value.page > 1) {
-    mapPagination.value.page -= 1;
-    fetchMaps();
-  }
-}
-
-function nextMapPage() {
-  if (mapPagination.value.page < mapPagination.value.lastPage) {
-    mapPagination.value.page += 1;
-    fetchMaps();
-  }
-}
-
-function changeMapPerPage(value: number) {
-  if (value <= 0) return;
-  mapPagination.value.perPage = value;
-  mapPagination.value.page = 1;
-  fetchMaps();
-}
-
-function prevAreaPage() {
-  if (areaPagination.value.page > 1) {
-    areaPagination.value.page -= 1;
-    fetchAreas();
-  }
-}
-
-function nextAreaPage() {
-  if (areaPagination.value.page < areaPagination.value.lastPage) {
-    areaPagination.value.page += 1;
-    fetchAreas();
-  }
-}
-
-function changeAreaPerPage(value: number) {
-  if (value <= 0) return;
-  areaPagination.value.perPage = value;
-  areaPagination.value.page = 1;
-  fetchAreas();
-}
-
-function exportMaps() {
-  const rows = mapRows.value;
-  if (!rows.length) {
-    message.warning("No maps to export.");
-    return;
-  }
-  const headers = mapTableColumns.filter(
-    (column) => column !== "Actions" && column !== "Config",
-  );
-  const escapeValue = (value: string | number | null | undefined) => {
-    const str = (value ?? "").toString().replace(/"/g, '""');
-    return `"${str}"`;
+const buildPayload = (layer: any, name?: string): ManagedAreaPayload => {
+  const geojson = layer.toGeoJSON();
+  return {
+    name: name?.trim() || undefined,
+    geom_type: resolveGeomType(layer),
+    geometry: geojson.geometry ?? geojson,
+    bbox: getLayerBounds(layer),
   };
-  const csvRows = [
-    headers.map(escapeValue).join(","),
-    ...rows.map((row) =>
-      [
-        row.id,
-        row.name,
-        row.area?.name || row.area_name || row.area_id,
-        row.description,
-        row.width_px,
-        row.height_px,
-      ]
-        .map(escapeValue)
-        .join(","),
-    ),
-  ];
-  const csvContent = "\uFEFF" + csvRows.join("\r\n");
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.setAttribute("download", "maps.csv");
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
-}
+};
 
-function exportAreas() {
-  const rows = areaRows.value;
-  if (!rows.length) {
-    message.warning("No areas to export.");
-    return;
-  }
-  const headers = areaTableColumns.filter((column) => column !== "Actions");
-  const escapeValue = (value: string | number | null | undefined) => {
-    const str = (value ?? "").toString().replace(/"/g, '""');
-    return `"${str}"`;
-  };
-  const csvRows = [
-    headers.map(escapeValue).join(","),
-    ...rows.map((row) =>
-      [
-        row.id,
-        row.name,
-        row.description,
-        row.height_m,
-        row.created_at,
-        row.updated_at,
-      ]
-        .map(escapeValue)
-        .join(","),
-    ),
-  ];
-  const csvContent = "\uFEFF" + csvRows.join("\r\n");
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.setAttribute("download", "areas.csv");
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
-}
-
-function formatDateTime(value?: string | null) {
-  return formatIotDateTime(value, { fallback: "-" });
-}
-
-function openAddModal() {
-  if (activeTab.value === "map") {
-    openAddMapModal();
-    return;
-  }
-  openAddAreaModal();
-}
-
-function confirmDeleteMap(row: MapRow) {
-  Modal.confirm({
-    title: "Delete Map",
-    content: `Are you sure you want to delete ${row.name ?? `map #${row.id}`}?`,
-    okText: "Delete",
-    okType: "danger",
-    cancelText: "Cancel",
-    centered: true,
-    onOk: () => deleteMap(row.id),
+const bindContextMenu = (layer: any, isSaved: boolean) => {
+  layer.off?.("contextmenu");
+  layer.on?.("contextmenu", (event: any) => {
+    showContextMenu(layer, event?.latlng, isSaved);
   });
-}
+};
 
-function confirmDeleteArea(row: AreaRow) {
-  Modal.confirm({
-    title: "Delete Area",
-    content: `Are you sure you want to delete ${row.name ?? `area #${row.id}`}?`,
-    okText: "Delete",
-    okType: "danger",
-    cancelText: "Cancel",
-    centered: true,
-    onOk: () => deleteArea(row.id),
+const showContextMenu = (layer: any, latlng: any, isSaved: boolean) => {
+  if (!mapInstance || !leaflet) return;
+  const popupId = `managed-area-menu-${popupCounter++}`;
+  const content = isSaved
+    ? `
+    <div id="${popupId}" class="flex flex-col gap-1 text-xs">
+      <button data-action="clear" class="px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700">Delete</button>
+    </div>
+  `
+    : `
+    <div id="${popupId}" class="flex flex-col gap-2 text-xs">
+      <input data-field="name" placeholder="Area name" class="w-40 rounded border border-gray-300 px-2 py-1 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-200" />
+      <div class="flex items-center gap-2">
+        <button data-action="save" class="px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700">Save</button>
+        <button data-action="clear" class="px-2 py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200">Clear</button>
+      </div>
+    </div>
+  `;
+  const popup = leaflet
+    .popup({ closeButton: false, autoClose: true })
+    .setLatLng(latlng)
+    .setContent(content);
+
+  popup.openOn(mapInstance);
+
+  setTimeout(() => {
+    const root = document.getElementById(popupId);
+    if (!root) return;
+    const saveBtn = root.querySelector('[data-action="save"]');
+    const clearBtn = root.querySelector('[data-action="clear"]');
+
+    saveBtn?.addEventListener("click", async () => {
+      if (isSaved) {
+        message.info("Area already saved.");
+        return;
+      }
+      const nameInput = root.querySelector(
+        '[data-field="name"]'
+      ) as HTMLInputElement | null;
+      const name = nameInput?.value?.trim() ?? "";
+      if (!name) {
+        message.warning("Name is required.");
+        return;
+      }
+      await saveLayer(layer, name);
+      mapInstance?.closePopup();
+    });
+
+    clearBtn?.addEventListener("click", async () => {
+      await clearLayer(layer, isSaved);
+      mapInstance?.closePopup();
+    });
+  }, 0);
+};
+
+const saveLayer = async (layer: any, name?: string) => {
+  try {
+    const payload = buildPayload(layer, name);
+    const headers = getAuthHeaders();
+    const res = await fetch(`${apiConfig.auth}/managed-areas`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.success === false) {
+      throw new Error(data?.message ?? "Failed to save area.");
+    }
+    layer.__managedAreaId = data?.data?.id;
+    if (data?.data) {
+      managedAreas.value = [data.data, ...managedAreas.value];
+    }
+    applyLayerStyle(layer, savedStyle);
+    bindContextMenu(layer, true);
+    message.success("Area saved.");
+  } catch (error) {
+    const msg = (error as Error)?.message ?? "Failed to save area.";
+    message.error(msg);
+  }
+};
+
+const clearLayer = async (layer: any, isSaved: boolean) => {
+  try {
+    if (isSaved && layer.__managedAreaId) {
+      const headers = getAuthHeaders();
+      const res = await fetch(
+        `${apiConfig.auth}/managed-areas/${layer.__managedAreaId}`,
+        {
+          method: "DELETE",
+          headers,
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        throw new Error(data?.message ?? "Failed to delete area.");
+      }
+      managedAreas.value = managedAreas.value.filter(
+        (area) => area.id !== layer.__managedAreaId
+      );
+      message.success("Area removed.");
+    }
+    drawnItems?.removeLayer(layer);
+  } catch (error) {
+    const msg = (error as Error)?.message ?? "Failed to delete area.";
+    message.error(msg);
+  }
+};
+
+const addManagedAreaLayer = (area: any) => {
+  if (!leaflet || !mapInstance || !drawnItems) return;
+  const geometry = area?.geometry;
+  if (!geometry) return;
+
+  const layer = leaflet.geoJSON(geometry, {
+    style: savedStyle,
   });
-}
 
-async function deleteMap(id: number) {
-  if (!import.meta.client) return;
-  if (!mapModuleBase || mapModuleBase.startsWith("/")) {
-    message.error("API base URL is not configured.");
+  layer.eachLayer((child: any) => {
+    child.__managedAreaId = area?.id;
+    bindContextMenu(child, true);
+  });
+
+  layer.addTo(drawnItems);
+};
+
+const removeSavedLayers = () => {
+  if (!drawnItems) return;
+  const toRemove: any[] = [];
+  drawnItems.eachLayer((layer: any) => {
+    if (layer?.__managedAreaId) {
+      toRemove.push(layer);
+    }
+  });
+  toRemove.forEach((layer) => drawnItems?.removeLayer(layer));
+};
+
+const loadManagedAreas = async (force = false) => {
+  try {
+    if (hasLoadedAreas && !force) return;
+    if (!authStore.authorizationHeader) return;
+    isAreasLoading.value = true;
+    const headers = getAuthHeaders();
+    const res = await fetch(`${apiConfig.auth}/managed-areas?per_page=200`, {
+      method: "GET",
+      headers,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.success === false) {
+      throw new Error(data?.message ?? "Failed to load managed areas.");
+    }
+    const items = Array.isArray(data?.data?.data)
+      ? data.data.data
+      : Array.isArray(data?.data)
+        ? data.data
+        : [];
+    managedAreas.value = items;
+    if (force) {
+      removeSavedLayers();
+    }
+    items.forEach(addManagedAreaLayer);
+    hasLoadedAreas = true;
+  } catch (error) {
+    const msg = (error as Error)?.message ?? "Failed to load managed areas.";
+    message.error(msg);
+  } finally {
+    isAreasLoading.value = false;
+  }
+};
+
+const loadPinnedLocation = () => {
+  if (!leaflet || !mapInstance) return;
+  try {
+    const raw = localStorage.getItem(PIN_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (
+      !parsed ||
+      typeof parsed.lat !== "number" ||
+      typeof parsed.lng !== "number"
+    ) {
+      return;
+    }
+    const latlng: [number, number] = [parsed.lat, parsed.lng];
+    pinnedMarker?.remove();
+    pinnedMarker = leaflet
+      .marker(latlng)
+      .addTo(mapInstance)
+      .bindPopup("Pinned location");
+    mapInstance.setView(latlng, parsed.zoom ?? 14, { animate: true });
+  } catch {
+    // ignore malformed storage
+  }
+};
+
+const savePinnedLocation = (latlng: { lat: number; lng: number }) => {
+  if (!leaflet || !mapInstance) return;
+  const zoom = mapInstance.getZoom();
+  localStorage.setItem(PIN_KEY, JSON.stringify({ ...latlng, zoom }));
+  pinnedMarker?.remove();
+  pinnedMarker = leaflet
+    .marker([latlng.lat, latlng.lng])
+    .addTo(mapInstance)
+    .bindPopup("Pinned location");
+  message.success("Pinned location saved.");
+};
+
+const zoomToPinned = () => {
+  if (!leaflet || !mapInstance) return;
+  try {
+    const raw = localStorage.getItem(PIN_KEY);
+    if (!raw) {
+      message.warning("No pinned location found.");
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    if (
+      !parsed ||
+      typeof parsed.lat !== "number" ||
+      typeof parsed.lng !== "number"
+    ) {
+      message.warning("Pinned location is invalid.");
+      return;
+    }
+    mapInstance.setView([parsed.lat, parsed.lng], parsed.zoom ?? 14, {
+      animate: true,
+    });
+  } catch {
+    message.warning("Pinned location is invalid.");
+  }
+};
+
+const zoomToInput = () => {
+  if (!leaflet || !mapInstance) return;
+  if (!latInput.value.trim() || !lngInput.value.trim()) {
+    message.warning("Latitude and longitude are required.");
     return;
   }
-  try {
-    const response = await fetch(`${mapModuleBase}/maps/${id}`, {
-      method: "DELETE",
-      headers: buildHeaders(),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data?.message ?? `Failed to delete map (${response.status}).`);
-    }
-    message.success(data?.message ?? "Map deleted successfully.");
-    fetchMaps();
-  } catch (error: any) {
-    message.error(error?.message ?? "Failed to delete map.");
-  }
-}
-
-async function deleteArea(id: number) {
-  if (!import.meta.client) return;
-  if (!mapModuleBase || mapModuleBase.startsWith("/")) {
-    message.error("API base URL is not configured.");
+  const lat = Number(latInput.value);
+  const lng = Number(lngInput.value);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    message.warning("Invalid latitude or longitude.");
     return;
   }
-  try {
-    const response = await fetch(`${mapModuleBase}/areas/${id}`, {
-      method: "DELETE",
-      headers: buildHeaders(),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data?.message ?? `Failed to delete area (${response.status}).`);
-    }
-    message.success(data?.message ?? "Area deleted successfully.");
-    fetchAreas();
-  } catch (error: any) {
-    message.error(error?.message ?? "Failed to delete area.");
+  if (lat < -90 || lat > 90) {
+    message.warning("Latitude must be between -90 and 90.");
+    return;
   }
-}
+  if (lng < -180 || lng > 180) {
+    message.warning("Longitude must be between -180 and 180.");
+    return;
+  }
+  mapInstance.setView([lat, lng], 15, { animate: true });
+};
 
-onMounted(() => {
-  fetchMaps();
-  fetchAreas();
+onMounted(async () => {
+  if (!import.meta.client) return;
+  await nextTick();
+  if (!mapEl.value) return;
+
+  const L = await import("leaflet");
+  await import("leaflet-draw");
+  leaflet = L;
+
+  mapInstance = L.map(mapEl.value, {
+    center: [10.7769, 106.7009],
+    zoom: 13,
+    zoomControl: true,
+  });
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "&copy; OpenStreetMap contributors",
+    maxZoom: 19,
+  }).addTo(mapInstance);
+
+  mapInstance?.setView([10.7769, 106.7009], 13);
+
+  // Leaflet Draw
+  drawnItems = new L.FeatureGroup();
+  mapInstance.addLayer(drawnItems);
+  const drawControl = new (L as any).Control.Draw({
+    edit: {
+      featureGroup: drawnItems,
+    },
+    draw: {
+      polygon: true,
+      rectangle: true,
+      circle: false,
+      circlemarker: false,
+      polyline: false,
+      marker: false,
+    },
+  });
+  mapInstance.addControl(drawControl);
+
+  mapInstance.on((L as any).Draw.Event.CREATED, (event: any) => {
+    const layer = event.layer;
+    if (!drawnItems) return;
+    applyLayerStyle(layer, pendingStyle);
+    drawnItems.addLayer(layer);
+    bindContextMenu(layer, false);
+  });
+
+  mapInstance.on("contextmenu", (event: any) => {
+    savePinnedLocation(event.latlng);
+  });
+
+  await loadManagedAreas();
+  loadPinnedLocation();
+  setTimeout(() => {
+    isLoadingMap.value = false;
+  }, 1000);
 });
 
-watch(searchKeyword, () => {
-  if (activeTab.value === "map") {
-    mapPagination.value.page = 1;
-    fetchMaps();
-  } else {
-    areaPagination.value.page = 1;
-    fetchAreas();
+watch(
+  () => authStore.authorizationHeader,
+  async (token) => {
+    if (!token) return;
+    if (!mapInstance || !drawnItems) return;
+    await loadManagedAreas();
   }
-});
+);
 
-watch(activeTab, () => {
-  if (activeTab.value === "map") {
-    fetchMaps();
-  } else {
-    fetchAreas();
+const refreshAreas = async () => {
+  await loadManagedAreas(true);
+};
+
+const focusArea = (area: any) => {
+  if (!mapInstance || !leaflet) return;
+  if (Array.isArray(area?.bbox) && area.bbox.length === 4) {
+    const [minLng, minLat, maxLng, maxLat] = area.bbox;
+    mapInstance.fitBounds(
+      [
+        [minLat, minLng],
+        [maxLat, maxLng],
+      ],
+      { padding: [20, 20] }
+    );
+    return;
   }
+  if (area?.geometry) {
+    const layer = leaflet.geoJSON(area.geometry);
+    mapInstance.fitBounds(layer.getBounds(), { padding: [20, 20] });
+  }
+};
+
+const deleteArea = async (area: any) => {
+  if (!area?.id) return;
+  try {
+    const headers = getAuthHeaders();
+    const res = await fetch(`${apiConfig.auth}/managed-areas/${area.id}`, {
+      method: "DELETE",
+      headers,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.success === false) {
+      throw new Error(data?.message ?? "Failed to delete area.");
+    }
+    managedAreas.value = managedAreas.value.filter((item) => item.id !== area.id);
+    if (drawnItems) {
+      const toRemove: any[] = [];
+      drawnItems.eachLayer((layer: any) => {
+        if (layer?.__managedAreaId === area.id) {
+          toRemove.push(layer);
+        }
+      });
+      toRemove.forEach((layer) => drawnItems?.removeLayer(layer));
+    }
+    message.success("Area removed.");
+  } catch (error) {
+    const msg = (error as Error)?.message ?? "Failed to delete area.";
+    message.error(msg);
+  }
+};
+
+const reloadMap = async () => {
+  if (!mapInstance || !mapEl.value || !leaflet) return;
+  try {
+    const currentCenter = mapInstance.getCenter();
+    const currentZoom = mapInstance.getZoom();
+    mapInstance.remove();
+
+    mapInstance = leaflet.map(mapEl.value, {
+      center: [currentCenter.lat, currentCenter.lng],
+      zoom: currentZoom,
+      zoomControl: true,
+    });
+
+    leaflet
+      .tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        maxZoom: 19,
+      })
+      .addTo(mapInstance);
+
+    drawnItems = new leaflet.FeatureGroup();
+    mapInstance.addLayer(drawnItems);
+    const drawControl = new (leaflet as any).Control.Draw({
+      edit: { featureGroup: drawnItems },
+      draw: {
+        polygon: true,
+        rectangle: true,
+        circle: false,
+        circlemarker: false,
+        polyline: false,
+        marker: false,
+      },
+    });
+    mapInstance.addControl(drawControl);
+    mapInstance.on((leaflet as any).Draw.Event.CREATED, (event: any) => {
+      const layer = event.layer;
+      if (!drawnItems) return;
+      applyLayerStyle(layer, pendingStyle);
+      drawnItems.addLayer(layer);
+      bindContextMenu(layer, false);
+    });
+    mapInstance.on("contextmenu", (event: any) => {
+      savePinnedLocation(event.latlng);
+    });
+
+    hasLoadedAreas = false;
+    await loadManagedAreas(true);
+    loadPinnedLocation();
+    message.success("Map reloaded.");
+  } catch (error) {
+    const msg = (error as Error)?.message ?? "Failed to reload.";
+    message.error(msg);
+  }
+};
+
+const resetMapView = () => {
+  if (!mapInstance) return;
+  mapInstance.setView([10.7769, 106.7009], 13, { animate: true });
+};
+
+onBeforeUnmount(() => {
+  if (mapInstance) {
+    mapInstance.remove();
+    mapInstance = null;
+  }
+  drawnItems = null;
+  leaflet = null;
 });
 </script>
-
