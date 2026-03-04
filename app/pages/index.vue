@@ -19,44 +19,25 @@
           </div>
         </section>
 
-        <section
-          class="grid grid-cols-1 gap-4 xl:grid-cols-5 items-start min-h-[40vh]"
-        >
-          <div class="xl:col-span-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-            <div class="animate-pulse space-y-4">
-              <div class="flex items-center gap-3">
-                <div class="h-8 w-40 rounded bg-gray-200"></div>
-                <div class="h-8 w-32 rounded bg-gray-200"></div>
+        <section class="grid min-h-[60vh] grid-cols-1 gap-4 xl:grid-cols-5 items-start min-h-0">
+            <div class="xl:col-span-4 h-full rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="animate-pulse flex h-full flex-col gap-4">
+                <div class="flex items-center gap-3">
+                  <div class="h-8 w-40 rounded bg-gray-200"></div>
+                  <div class="h-8 w-32 rounded bg-gray-200"></div>
+                </div>
+                <div class="flex-1 w-full rounded bg-gray-100"></div>
+                <div class="h-4 w-48 rounded bg-gray-200"></div>
               </div>
-              <div class="h-64 w-full rounded bg-gray-100"></div>
-              <div class="h-4 w-48 rounded bg-gray-200"></div>
             </div>
-          </div>
-          <div class="xl:col-span-1 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-            <div class="animate-pulse space-y-4">
-              <div class="h-5 w-32 rounded bg-gray-200"></div>
-              <div class="h-8 w-full rounded bg-gray-100"></div>
-              <div class="h-8 w-full rounded bg-gray-100"></div>
-              <div class="h-8 w-full rounded bg-gray-100"></div>
+            <div class="xl:col-span-1 h-full rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="animate-pulse flex h-full flex-col gap-4">
+                <div class="h-5 w-32 rounded bg-gray-200"></div>
+                <div class="flex-1 w-full rounded bg-gray-100"></div>
+                <div class="h-8 w-full rounded bg-gray-100"></div>
+                <div class="h-8 w-full rounded bg-gray-100"></div>
+              </div>
             </div>
-          </div>
-        </section>
-
-        <section class="grid grid-cols-1 gap-4 lg:grid-cols-2 items-start min-h-[40vh]">
-          <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-            <div class="animate-pulse space-y-4">
-              <div class="h-5 w-40 rounded bg-gray-200"></div>
-              <div class="h-40 w-full rounded bg-gray-100"></div>
-              <div class="h-4 w-32 rounded bg-gray-200"></div>
-            </div>
-          </div>
-          <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-            <div class="animate-pulse space-y-4">
-              <div class="h-5 w-44 rounded bg-gray-200"></div>
-              <div class="h-40 w-full rounded bg-gray-100"></div>
-              <div class="h-4 w-28 rounded bg-gray-200"></div>
-            </div>
-          </div>
         </section>
       </template>
 
@@ -65,34 +46,19 @@
           <DevicesControlMetricDataWidgetBox />
         </section>
 
-        <section
-          class="grid grid-cols-1 gap-4 xl:grid-cols-5 items-start min-h-[40vh]"
-        >
-          <SingleMetricChart
-            class="xl:col-span-4"
-            :series="chartSeries"
-            :selected-metric-key="selectedMetricKey"
-            :selected-timeframe="selectedTimeframe"
-            @update:selected-metric-key="handleMetricChange"
-            @update:selected-timeframe="handleTimeframeChange"
-          />
-          <div class="xl:col-span-1 h-full">
-            <!-- ActiveDevicesPanel now handles its own data fetching via SSE -->
-            <DevicesControlActiveDevicesPanel />
-          </div>
-        </section>
-
-        <section class="grid grid-cols-1 gap-4 lg:grid-cols-2 items-start min-h-[40vh]">
-          <div class="lg:col-span-1 h-full">
-            <DevicesControlAutomationBatches :automations="automationBatches" />
-          </div>
-          <div class="lg:col-span-1 h-full">
-            <DevicesControlTypeDistributionPanel
-              :series="typeDistributionSeries"
-              :categories="typeDistributionCategories"
-              :is-loading="isTypeDistributionLoading"
+        <section class="grid min-h-[60vh] grid-cols-1 gap-4 xl:grid-cols-5 items-start min-h-0">
+            <SingleMetricChart
+              class="xl:col-span-4 h-full"
+              :series="chartSeries"
+              :selected-metric-key="selectedMetricKey"
+              :selected-timeframe="selectedTimeframe"
+              @update:selected-metric-key="handleMetricChange"
+              @update:selected-timeframe="handleTimeframeChange"
             />
-          </div>
+            <div class="xl:col-span-1 h-full">
+              <!-- ActiveDevicesPanel now handles its own data fetching via SSE -->
+              <DevicesControlActiveDevicesPanel />
+            </div>
         </section>
       </template>
     </div>
