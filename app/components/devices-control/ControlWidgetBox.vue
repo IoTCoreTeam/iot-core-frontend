@@ -11,7 +11,7 @@
     </div>
     <div
       v-else
-      class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+      class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3"
     >
       <div
         v-for="widget in widgets"
@@ -19,14 +19,28 @@
         class="group relative rounded border border-slate-200 bg-white p-6 transition-all duration-200"
       >
         <!-- Status Indicator -->
-        <div
-          class="absolute top-4 right-4 flex h-3 w-3 items-center justify-center rounded-full"
-          :class="isPending(widget.id)
-            ? 'bg-amber-400 ring-4 ring-amber-100 animate-pulse'
-            : (isWidgetOn(widget)
-              ? 'bg-emerald-500 ring-4 ring-emerald-100'
-              : 'bg-slate-300 ring-4 ring-slate-100')"
-        />
+        <div class="absolute top-4 right-4 flex items-center gap-2">
+          <button
+            type="button"
+            class="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-slate-700"
+            aria-label="Details"
+            @click="openDetail(widget)"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 10v6" />
+              <path d="M12 7h.01" />
+            </svg>
+          </button>
+          <div
+            class="flex h-3 w-3 items-center justify-center rounded-full"
+            :class="isPending(widget.id)
+              ? 'bg-amber-400 ring-4 ring-amber-100 animate-pulse'
+              : (isWidgetOn(widget)
+                ? 'bg-emerald-500 ring-4 ring-emerald-100'
+                : 'bg-slate-300 ring-4 ring-slate-100')"
+          />
+        </div>
 
         <!-- Content -->
         <div class="space-y-4">
@@ -92,19 +106,41 @@
               </span>
             </button>
             <div
-              v-else
-              class="flex w-full items-center justify-center rounded-md border border-slate-200
-                     bg-slate-50 px-3 py-2.5 text-center text-xs font-semibold text-slate-500"
+              v-else-if="isAnalogInput(widget)"
+              class="flex w-full items-center gap-3"
             >
-              Input type not supported.
+              <a-input-number
+                class="w-24"
+                :min="getAnalogMin(widget)"
+                :max="getAnalogMax(widget)"
+                :step="getAnalogStep(widget)"
+                :precision="3"
+                :value="getAnalogValue(widget)"
+                @update:value="(value) => setAnalogValue(widget.id, value)"
+              />
+              <a-slider
+                class="flex-1"
+                :min="getAnalogMin(widget)"
+                :max="getAnalogMax(widget)"
+                :step="getAnalogStep(widget)"
+                :value="getAnalogValue(widget)"
+                @update:value="(value) => setAnalogValue(widget.id, value)"
+              />
+              <button
+                type="button"
+                class="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                :disabled="isExecuting(widget.id) || !canExecuteAnalog(widget)"
+                @click="applyAnalog(widget)"
+              >
+                Set
+              </button>
             </div>
-            <button
-              type="button"
-              class="flex items-center justify-center rounded-md border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-              @click="openDetail(widget)"
+            <div
+              v-else
+              class="flex w-full items-center justify-center rounded-md bg-slate-50 px-3 py-2.5 text-center text-xs font-semibold text-slate-500"
             >
-              Details
-            </button>
+              Not supported.
+            </div>
           </div>
         </div>
       </div>
@@ -114,6 +150,7 @@
       v-if="selectedWidget"
       v-model="isDetailOpen"
       :control-url="selectedWidget.raw"
+      @save-analog="handleAnalogSaved"
       @close="closeDetail"
     />
   </div>
@@ -132,6 +169,24 @@ type ControlUrlItem = {
   name?: string | null;
   url?: string | null;
   input_type?: string | null;
+  analog_signal?: {
+    id?: string | null;
+    control_url_id?: string | null;
+    min_value?: number | string | null;
+    max_value?: number | string | null;
+    unit?: string | null;
+    signal_type?: string | null;
+    resolution_bits?: number | string | null;
+  } | null;
+  analogSignal?: {
+    id?: string | null;
+    control_url_id?: string | null;
+    min_value?: number | string | null;
+    max_value?: number | string | null;
+    unit?: string | null;
+    signal_type?: string | null;
+    resolution_bits?: number | string | null;
+  } | null;
   node?: {
     id?: string | null;
     name?: string | null;
@@ -165,6 +220,8 @@ const props = withDefaults(
     isLoading?: boolean;
     error?: string | null;
     onExecute?: (widget: ControlWidget, nextState: boolean) => Promise<void>;
+    onExecuteAnalog?: (widget: ControlWidget, value: number) => Promise<void>;
+    onAnalogSaved?: (signal: any) => void;
     hasSse?: boolean;
     controllerStatesByNode?: Record<string, ControllerState[]>;
   }>(),
@@ -174,6 +231,7 @@ const props = withDefaults(
 );
 
 const widgetState = ref<Record<string, boolean>>({});
+const analogValueMap = ref<Record<string, number>>({});
 const executingMap = ref<Record<string, boolean>>({});
 const pendingMap = ref<Record<string, boolean>>({});
 const expectedStateMap = ref<Record<string, boolean>>({});
@@ -332,6 +390,86 @@ function isDigitalInput(widget: ControlWidget) {
   return String(widget.raw.input_type ?? "").toLowerCase() === "digital";
 }
 
+function isAnalogInput(widget: ControlWidget) {
+  return String(widget.raw.input_type ?? "").toLowerCase() === "analog";
+}
+
+function resolveAnalogSignal(widget: ControlWidget) {
+  return widget.raw.analog_signal ?? widget.raw.analogSignal ?? null;
+}
+
+function getAnalogMin(widget: ControlWidget) {
+  const signal = resolveAnalogSignal(widget);
+  const value = Number(signal?.min_value ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function getAnalogMax(widget: ControlWidget) {
+  const signal = resolveAnalogSignal(widget);
+  const value = Number(signal?.max_value ?? 100);
+  return Number.isFinite(value) ? value : 100;
+}
+
+function getAnalogStep(widget: ControlWidget) {
+  const signal = resolveAnalogSignal(widget);
+  const bits = Number(signal?.resolution_bits ?? 0);
+  if (!Number.isFinite(bits) || bits <= 0) {
+    return 1;
+  }
+  const max = getAnalogMax(widget);
+  const min = getAnalogMin(widget);
+  const steps = Math.pow(2, bits) - 1;
+  if (steps <= 0) return 1;
+  return (max - min) / steps;
+}
+
+function getAnalogValue(widget: ControlWidget) {
+  if (typeof analogValueMap.value[widget.id] === "number") {
+    return analogValueMap.value[widget.id]!;
+  }
+  const min = getAnalogMin(widget);
+  const max = getAnalogMax(widget);
+  const fallback = min + (max - min) / 2;
+  return Number.isFinite(fallback) ? fallback : min;
+}
+
+function setAnalogValue(id: string, value: number | string | [number, number] | null) {
+  const normalizedValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Array.isArray(value)
+          ? Number(value[0])
+          : NaN;
+  const normalized = Number.isFinite(normalizedValue) ? normalizedValue : 0;
+  analogValueMap.value[id] = normalized;
+}
+
+function canExecuteAnalog(widget: ControlWidget) {
+  if (isExecuting(widget.id)) return false;
+  return typeof props.onExecuteAnalog === "function";
+}
+
+async function applyAnalog(widget: ControlWidget) {
+  if (!props.onExecuteAnalog) {
+    message.warning("Analog control is not configured.");
+    return;
+  }
+  if (isExecuting(widget.id)) return;
+
+  const value = getAnalogValue(widget);
+  executingMap.value[widget.id] = true;
+  try {
+    await props.onExecuteAnalog(widget, value);
+    message.success("Analog value sent.");
+  } catch (error: any) {
+    message.error(error?.message ?? "Failed to send analog value.");
+  } finally {
+    executingMap.value[widget.id] = false;
+  }
+}
+
 function openDetail(widget: ControlWidget) {
   selectedWidget.value = widget;
   isDetailOpen.value = true;
@@ -340,6 +478,12 @@ function openDetail(widget: ControlWidget) {
 function closeDetail() {
   isDetailOpen.value = false;
   selectedWidget.value = null;
+}
+
+function handleAnalogSaved(signal: any) {
+  if (props.onAnalogSaved) {
+    props.onAnalogSaved(signal);
+  }
 }
 
 watch(

@@ -68,19 +68,16 @@ export function useHandleUrlControl(options: HandleUrlControlOptions) {
   }
 
   function resolveControlUrlKey(item: ControlUrlItem) {
-    const url = item.url ?? "";
-    if (url) {
-      const sanitized = (url.split("?")[0] ?? "").trim();
-      const segments = sanitized.split("/").filter(Boolean);
-      const lastSegment = segments.at(-1);
-      if (lastSegment) {
-        return lastSegment.toLowerCase();
-      }
-    }
     if (item.name) {
       const normalized = item.name.trim().toLowerCase();
       if (normalized) {
         return normalized.split(/\s+/)[0] ?? normalized;
+      }
+    }
+    if (item.controller_id) {
+      const normalized = item.controller_id.trim().toLowerCase();
+      if (normalized) {
+        return normalized;
       }
     }
     return null;
@@ -286,6 +283,10 @@ export function useHandleUrlControl(options: HandleUrlControlOptions) {
     }
     if (!item.controller_id) {
       message.warning("Missing controller id from SSE.");
+      return;
+    }
+    if (!item.url || !item.url.trim().startsWith("/")) {
+      message.warning("URL must start with '/'.");
       return;
     }
 

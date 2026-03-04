@@ -11,6 +11,8 @@
       :is-loading="isLoadingControlUrls"
       :error="controlUrlLoadError"
       :on-execute="handleExecuteControlUrl"
+      :on-execute-analog="handleExecuteAnalog"
+      :on-analog-saved="handleAnalogSaved"
       :has-sse="isSseConnected"
       :controller-states-by-node="controllerStatesByNode"
     />
@@ -49,6 +51,24 @@ type ControlUrlItem = {
   name?: string | null;
   url?: string | null;
   input_type?: string | null;
+  analog_signal?: {
+    id?: string | null;
+    control_url_id?: string | null;
+    min_value?: number | string | null;
+    max_value?: number | string | null;
+    unit?: string | null;
+    signal_type?: string | null;
+    resolution_bits?: number | string | null;
+  } | null;
+  analogSignal?: {
+    id?: string | null;
+    control_url_id?: string | null;
+    min_value?: number | string | null;
+    max_value?: number | string | null;
+    unit?: string | null;
+    signal_type?: string | null;
+    resolution_bits?: number | string | null;
+  } | null;
   node?: {
     id?: string | null;
     name?: string | null;
@@ -104,7 +124,7 @@ async function fetchControlUrls() {
   isLoadingControlUrls.value = true;
   controlUrlLoadError.value = null;
   try {
-    const endpoint = `${apiConfig.controlModule.replace(/\/$/, "")}/control-urls?include=gateway&per_page=100`;
+    const endpoint = `${apiConfig.controlModule.replace(/\/$/, "")}/control-urls?include=gateway,analog_signal&per_page=100`;
     const response = await fetch(endpoint, {
         headers: {
         Authorization: authorization,
@@ -130,6 +150,10 @@ async function fetchControlUrls() {
   }
 }
 
+function handleAnalogSaved() {
+  fetchControlUrls();
+}
+
 async function handleExecuteControlUrl(widget: {
   id: string;
   raw: ControlUrlItem;
@@ -153,6 +177,29 @@ async function handleExecuteControlUrl(widget: {
     action_type: actionType ?? undefined,
   });
 
+}
+
+async function handleExecuteAnalog(widget: {
+  id: string;
+  raw: ControlUrlItem;
+}, value: number) {
+  if (!apiConfig.controlModule) return;
+  const authorization = authStore.authorizationHeader;
+  if (!authorization) {
+    throw new Error("Missing authorization.");
+  }
+
+  const url = widget.raw.url ?? "";
+  if (!url) {
+    throw new Error("Missing control URL.");
+  }
+
+  const actionType = normalizeActionType(widget.raw.input_type);
+  await executeControlUrl(authorization, widget.id, {
+    url,
+    value,
+    action_type: actionType ?? undefined,
+  });
 }
 
 function handleGatewayUpdate(event: MessageEvent) {

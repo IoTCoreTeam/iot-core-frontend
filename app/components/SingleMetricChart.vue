@@ -62,7 +62,7 @@
         </div>
       </div>
 
-      <div class="mt-2 overflow-hidden rounded-lg bg-white min-h-[20vh]">
+      <div class="mt-2 overflow-hidden rounded-lg bg-white min-h-[20vh] my-auto">
         <ClientOnly>
           <ApexChart
             type="line"

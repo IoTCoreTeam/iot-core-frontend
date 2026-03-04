@@ -331,7 +331,8 @@
                                 v-model="item.input_type"
                                 type="text"
                                 readonly
-                                class="border-0 border-b border-slate-300 rounded-none px-0 py-1 text-xs w-28 bg-transparent focus:outline-none focus:ring-0 focus:border-blue-500"
+                                disabled
+                                class="border-0 border-b border-slate-300 rounded-none px-0 py-1 text-xs w-28 bg-transparent text-gray-400 cursor-not-allowed focus:outline-none focus:ring-0 focus:border-blue-500"
                               />
                             </div>
                             <div class="flex items-center gap-2">
