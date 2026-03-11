@@ -20,7 +20,7 @@
         </section>
 
         <section class="grid min-h-[60vh] grid-cols-1 gap-4 xl:grid-cols-5 items-start min-h-0">
-            <div class="xl:col-span-4 h-full rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="xl:col-span-2 h-full rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
               <div class="animate-pulse flex h-full flex-col gap-4">
                 <div class="flex items-center gap-3">
                   <div class="h-8 w-40 rounded bg-gray-200"></div>
@@ -28,6 +28,13 @@
                 </div>
                 <div class="flex-1 w-full rounded bg-gray-100"></div>
                 <div class="h-4 w-48 rounded bg-gray-200"></div>
+              </div>
+            </div>
+            <div class="xl:col-span-2 h-full rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="animate-pulse flex h-full flex-col gap-4">
+                <div class="h-8 w-28 rounded bg-gray-200"></div>
+                <div class="flex-1 w-full rounded bg-gray-100"></div>
+                <div class="h-4 w-40 rounded bg-gray-200"></div>
               </div>
             </div>
             <div class="xl:col-span-1 h-full rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
@@ -48,16 +55,27 @@
 
         <section class="grid min-h-[60vh] grid-cols-1 gap-4 xl:grid-cols-5 items-start min-h-0">
             <SingleMetricChart
-              class="xl:col-span-4 h-full"
+              class="xl:col-span-2 h-full"
               :series="chartSeries"
               :selected-metric-key="selectedMetricKey"
               :selected-timeframe="selectedTimeframe"
               @update:selected-metric-key="handleMetricChange"
               @update:selected-timeframe="handleTimeframeChange"
             />
+            <DeviceMapCanvas
+              ref="mapCanvasRef"
+              class="xl:col-span-2 h-full rounded"
+              map-height="60vh"
+              :show-controls="false"
+            />
             <div class="xl:col-span-1 h-full">
               <!-- ActiveDevicesPanel now handles its own data fetching via SSE -->
-              <DevicesControlActiveDevicesPanel />
+              <DevicesControlActiveDevicesPanel
+                :show-map-tab="true"
+                :map-is-areas-loading="mapIsAreasLoading"
+                :map-managed-areas="mapManagedAreas"
+                :map-focus-area="handleFocusArea"
+              />
             </div>
         </section>
       </template>
@@ -66,18 +84,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch, isRef, type Ref } from "vue";
 import { apiConfig } from "~~/config/api";
 import { useAuthStore } from "~~/stores/auth";
 import SingleMetricChart from "@/components/SingleMetricChart.vue";
+import DeviceMapCanvas from "@/components/devices-control/maps/DeviceMapCanvas.vue";
 import { useMetrics } from "@/composables/useMetrics";
 import DevicesControlMetricDataWidgetBox from "@/components/devices-control/MetricDataWidgetBox.vue";
 
 const authStore = useAuthStore();
-import type {
-  SeriesPoint,
-  TimeframeKey,
-} from "@/types/dashboard";
+import type { SeriesPoint, TimeframeKey } from "@/types/dashboard";
 
 interface AutomationBatchItem {
   id: number;
@@ -118,6 +134,30 @@ const selectedMetricKey = ref<string>("");
 const selectedTimeframe = ref<TimeframeKey>("second");
 // const chartSeries = ref<SeriesPoint[]>([]); // handled in child or removed
 const chartSeries = ref<SeriesPoint[]>([]);
+
+type MapCanvasExpose = {
+  managedAreas: Ref<any[]> | any[];
+  isAreasLoading: Ref<boolean> | boolean;
+  focusArea: (area: any) => void;
+};
+
+const mapCanvasRef = ref<MapCanvasExpose | null>(null);
+
+const mapManagedAreas = computed(() => {
+  const areas = mapCanvasRef.value?.managedAreas;
+  if (isRef(areas)) return Array.isArray(areas.value) ? areas.value : [];
+  return Array.isArray(areas) ? areas : [];
+});
+
+const mapIsAreasLoading = computed(() => {
+  const loading = mapCanvasRef.value?.isAreasLoading;
+  if (isRef(loading)) return Boolean(loading.value);
+  return Boolean(loading);
+});
+
+function handleFocusArea(area: any) {
+  mapCanvasRef.value?.focusArea?.(area);
+}
 
 function handleMetricChange(key: string) {
   selectedMetricKey.value = key;

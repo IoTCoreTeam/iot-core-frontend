@@ -3,6 +3,7 @@
     :class="[
       'bg-white rounded border border-slate-200 overflow-hidden transition-all duration-200',
       padded ? 'text-xs' : '',
+      props.scrollBody ? 'flex flex-col h-full min-h-0' : '',
     ]"
   >
     <header
@@ -12,7 +13,12 @@
       <slot name="header" />
     </header>
 
-    <div class="overflow-x-auto w-full">
+    <div
+      :class="[
+        'overflow-x-auto w-full',
+        props.scrollBody ? 'flex-1 overflow-y-auto min-h-0' : '',
+      ]"
+    >
       <table class="w-full">
         <thead>
           <slot name="head" />
@@ -36,45 +42,45 @@
           </template>
         </tbody>
       </table>
+    </div>
 
-      <div
-        v-if="props.pagination"
-        class="px-2 py-1 border-t border-gray-200 bg-slate-50 flex items-center justify-between"
-      >
-        <div class="text-gray-500 text-xs">
-          {{ props.pagination.page }}/{{ props.pagination.lastPage }} of
-          {{ props.pagination.total }} items
-        </div>
-        <div class="flex items-center gap-1">
-          <select
-            class="border border-gray-300 rounded py-0.5 px-0.5 bg-white text-xs"
-            :value="selectValue"
-            @change="handlePerPageChange"
-          >
-            <option value="5">5</option>
-            <option value="10">10</option>
-            <option value="15">15</option>
-            <option value="20">20</option>
-            <option value="50">50</option>
-            <option value="all">All</option>
-          </select>
+    <div
+      v-if="props.pagination"
+      class="px-2 py-1 border-t border-gray-200 bg-slate-50 flex items-center justify-between"
+    >
+      <div class="text-gray-500 text-xs">
+        {{ props.pagination.page }}/{{ props.pagination.lastPage }} of
+        {{ props.pagination.total }} items
+      </div>
+      <div class="flex items-center gap-1">
+        <select
+          class="border border-gray-300 rounded py-0.5 px-0.5 bg-white text-xs"
+          :value="selectValue"
+          @change="handlePerPageChange"
+        >
+          <option value="5">5</option>
+          <option value="10">10</option>
+          <option value="15">15</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+          <option value="all">All</option>
+        </select>
 
-          <button
-            class="px-1 py-0.5 border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-50 text-xs"
-            :disabled="props.pagination.page <= 1"
-            @click="emit('prev-page')"
-          >
-            <BootstrapIcon name="chevron-left" class="w-3 h-3" />
-          </button>
+        <button
+          class="px-1 py-0.5 border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-50 text-xs"
+          :disabled="props.pagination.page <= 1"
+          @click="emit('prev-page')"
+        >
+          <BootstrapIcon name="chevron-left" class="w-3 h-3" />
+        </button>
 
-          <button
-            class="px-1 py-0.5 border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-50 text-xs"
-            :disabled="props.pagination.page >= props.pagination.lastPage"
-            @click="emit('next-page')"
-          >
-            <BootstrapIcon name="chevron-right" class="w-3 h-3" />
-          </button>
-        </div>
+        <button
+          class="px-1 py-0.5 border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:opacity-50 text-xs"
+          :disabled="props.pagination.page >= props.pagination.lastPage"
+          @click="emit('next-page')"
+        >
+          <BootstrapIcon name="chevron-right" class="w-3 h-3" />
+        </button>
       </div>
     </div>
 
@@ -107,6 +113,7 @@ const props = withDefaults(
     loadingText?: string;
     elevated?: boolean;
     padded?: boolean;
+    scrollBody?: boolean;
   }>(),
   {
     hasData: true,
@@ -114,6 +121,7 @@ const props = withDefaults(
     loadingText: "Loading data...",
     elevated: true,
     padded: true,
+    scrollBody: false,
   }
 );
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white border border-slate-200 rounded p-4">
+  <div class="bg-white border border-slate-200 rounded p-4 h-[60vh] max-h-[60vh] flex flex-col min-h-0">
     <div
       class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
     >
@@ -50,7 +50,7 @@
       </p>
     </div>
 
-    <div class="mt-3">
+    <div class="mt-3 flex-1 min-h-0 flex flex-col">
       <div class="flex items-end justify-between text-xs text-gray-500">
         <div class="flex items-center gap-1">
           <span class="inline-block h-2 w-2 rounded-full bg-blue-600" />
@@ -62,11 +62,11 @@
         </div>
       </div>
 
-      <div class="mt-2 overflow-hidden rounded-lg bg-white min-h-[20vh] my-auto">
+      <div class="mt-2 overflow-hidden rounded-lg bg-white flex-1 min-h-0">
         <ClientOnly>
           <ApexChart
             type="line"
-            height="200"
+            height="100%"
             :options="chartOptions"
             :series="chartSeries"
           />
@@ -265,7 +265,7 @@ const chartOptions = computed<ApexOptions>(() => {
   return {
     chart: {
       id: `parameter-trend-${props.selectedTimeframe}`,
-      height: 350,
+      height: "100%",
       type: "line",
       stacked: false,
       toolbar: { show: false },

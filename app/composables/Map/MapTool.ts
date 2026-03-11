@@ -1,20 +1,20 @@
-import type { Map as LeafletMap } from "leaflet";
+import type { Map as MapLibreMap } from "maplibre-gl";
 import { ref, type Ref } from "vue";
 import { message } from "ant-design-vue";
+import { MAP_DEFAULT_CENTER } from "~~/config/map";
 
 type MapToolDeps = {
-  mapRef: Ref<LeafletMap | null>;
-  leafletRef: Ref<typeof import("leaflet") | null>;
+  mapRef: Ref<MapLibreMap | null>;
   defaultCenter?: [number, number];
   defaultZoom?: number;
 };
 
-export const DEFAULT_CENTER: [number, number] = [10.7769, 106.7009];
-export const DEFAULT_ZOOM = 13;
+// [lng, lat]
+export const DEFAULT_CENTER: [number, number] = MAP_DEFAULT_CENTER;
+export const DEFAULT_ZOOM = 15;
 
 export const useMapTool = ({
   mapRef,
-  leafletRef,
   defaultCenter = DEFAULT_CENTER,
   defaultZoom = DEFAULT_ZOOM,
 }: MapToolDeps) => {
@@ -42,13 +42,13 @@ export const useMapTool = ({
       message.warning("Longitude must be between -180 and 180.");
       return;
     }
-    mapInstance.setView([lat, lng], 15, { animate: true });
+    mapInstance.flyTo({ center: [lng, lat], zoom: 15 });
   };
 
   const resetMapView = () => {
     const mapInstance = mapRef.value;
     if (!mapInstance) return;
-    mapInstance.setView(defaultCenter, defaultZoom, { animate: true });
+    mapInstance.flyTo({ center: defaultCenter, zoom: defaultZoom });
   };
 
   return {

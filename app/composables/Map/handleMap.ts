@@ -1,4 +1,5 @@
-import type { FeatureGroup, Map as LeafletMap } from "leaflet";
+import type { Map as MapLibreMap, LngLatLike } from "maplibre-gl";
+import type MapboxDraw from "@mapbox/mapbox-gl-draw";
 import { ref, type Ref } from "vue";
 import { message } from "ant-design-vue";
 import { apiConfig } from "~~/config/api";
@@ -12,37 +13,23 @@ type ManagedAreaPayload = {
 };
 
 type MapHandleDeps = {
-  mapRef: Ref<LeafletMap | null>;
-  drawnItemsRef: Ref<FeatureGroup | null>;
-  leafletRef: Ref<typeof import("leaflet") | null>;
+  mapRef: Ref<MapLibreMap | null>;
+  drawRef: Ref<MapboxDraw | null>;
+  maplibreRef: Ref<typeof import("maplibre-gl") | null>;
 };
 
 export const useHandleMap = ({
   mapRef,
-  drawnItemsRef,
-  leafletRef,
+  drawRef,
+  maplibreRef,
 }: MapHandleDeps) => {
   const authStore = useAuthStore();
   const isAreasLoading = ref(false);
   const managedAreas = ref<any[]>([]);
   const hasLoadedAreas = ref(false);
   const popupCounter = ref(0);
-
-  const pendingStyle = {
-    color: "#9ca3af",
-    weight: 2,
-    fill: false,
-    fillColor: "#d1d5db",
-    fillOpacity: 0,
-  };
-
-  const savedStyle = {
-    color: "#3b82f6",
-    weight: 2,
-    fill: false,
-    fillColor: "#60a5fa",
-    fillOpacity: 0,
-  };
+  const popupRef = ref<any | null>(null);
+  const hasRegisteredHandlers = ref(false);
 
   const getAuthHeaders = () => {
     const authorization = authStore.authorizationHeader;
@@ -55,50 +42,60 @@ export const useHandleMap = ({
     };
   };
 
-  const applyLayerStyle = (layer: any, style: Record<string, any>) => {
-    if (layer?.setStyle) {
-      layer.setStyle(style);
+  const collectCoords = (coords: any, out: [number, number][]) => {
+    if (!coords) return;
+    if (typeof coords[0] === "number" && typeof coords[1] === "number") {
+      out.push([coords[0], coords[1]]);
+      return;
+    }
+    if (Array.isArray(coords)) {
+      coords.forEach((entry) => collectCoords(entry, out));
     }
   };
 
-  const getLayerBounds = (layer: any) => {
-    if (!layer?.getBounds) return null;
-    const bounds = layer.getBounds();
-    if (!bounds) return null;
-    const sw = bounds.getSouthWest();
-    const ne = bounds.getNorthEast();
-    return [sw.lng, sw.lat, ne.lng, ne.lat] as [number, number, number, number];
+  const getGeometryBbox = (geometry: any) => {
+    if (!geometry?.coordinates) return null;
+    const points: [number, number][] = [];
+    collectCoords(geometry.coordinates, points);
+    const first = points[0];
+    if (!first) return null;
+    let minLng = first[0];
+    let minLat = first[1];
+    let maxLng = first[0];
+    let maxLat = first[1];
+    points.forEach(([lng, lat]) => {
+      if (lng < minLng) minLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lng > maxLng) maxLng = lng;
+      if (lat > maxLat) maxLat = lat;
+    });
+    return [minLng, minLat, maxLng, maxLat] as [number, number, number, number];
   };
 
-  const resolveGeomType = (layer: any): ManagedAreaPayload["geom_type"] => {
-    const L = leafletRef.value;
-    if (L && layer instanceof L.Rectangle) {
-      return "rectangle";
-    }
+  const resolveGeomType = (feature: any): ManagedAreaPayload["geom_type"] => {
+    const hint = feature?.properties?.geom_type;
+    if (hint === "rectangle") return "rectangle";
     return "polygon";
   };
 
-  const buildPayload = (layer: any, name?: string): ManagedAreaPayload => {
-    const geojson = layer.toGeoJSON();
+  const buildPayload = (feature: any, name?: string): ManagedAreaPayload => {
+    const geometry = feature?.geometry;
     return {
       name: name?.trim() || undefined,
-      geom_type: resolveGeomType(layer),
-      geometry: geojson.geometry ?? geojson,
-      bbox: getLayerBounds(layer),
+      geom_type: resolveGeomType(feature),
+      geometry,
+      bbox: getGeometryBbox(geometry),
     };
   };
 
-  const bindContextMenu = (layer: any, isSaved: boolean) => {
-    layer.off?.("contextmenu");
-    layer.on?.("contextmenu", (event: any) => {
-      showContextMenu(layer, event?.latlng, isSaved);
-    });
-  };
-
-  const showContextMenu = (layer: any, latlng: any, isSaved: boolean) => {
+  const showContextMenu = async (
+    feature: any,
+    lngLat: LngLatLike,
+    isSaved: boolean,
+  ) => {
     const mapInstance = mapRef.value;
-    const L = leafletRef.value;
-    if (!mapInstance || !L) return;
+    const maplibre = maplibreRef.value;
+    if (!mapInstance || !maplibre) return;
     const popupId = `managed-area-menu-${popupCounter.value++}`;
     const content = isSaved
       ? `
@@ -115,11 +112,12 @@ export const useHandleMap = ({
       </div>
     </div>
   `;
-    const popup = L.popup({ closeButton: false, autoClose: true })
-      .setLatLng(latlng)
-      .setContent(content);
-
-    popup.openOn(mapInstance);
+    popupRef.value?.remove();
+    const popup = new maplibre.Popup({ closeButton: false, closeOnClick: true })
+      .setLngLat(lngLat)
+      .setHTML(content)
+      .addTo(mapInstance);
+    popupRef.value = popup;
 
     setTimeout(() => {
       const root = document.getElementById(popupId);
@@ -140,20 +138,27 @@ export const useHandleMap = ({
           message.warning("Name is required.");
           return;
         }
-        await saveLayer(layer, name);
-        mapInstance.closePopup();
+        await saveFeature(feature, name);
+        popup.remove();
       });
 
       clearBtn?.addEventListener("click", async () => {
-        await clearLayer(layer, isSaved);
-        mapInstance.closePopup();
+        await clearFeature(feature, isSaved);
+        popup.remove();
       });
     }, 0);
   };
 
-  const saveLayer = async (layer: any, name?: string) => {
+  const closeContextMenu = () => {
+    popupRef.value?.remove();
+    popupRef.value = null;
+  };
+
+  const saveFeature = async (feature: any, name?: string) => {
+    const draw = drawRef.value;
+    if (!draw) return;
     try {
-      const payload = buildPayload(layer, name);
+      const payload = buildPayload(feature, name);
       const headers = getAuthHeaders();
       const res = await fetch(`${apiConfig.auth}/managed-areas`, {
         method: "POST",
@@ -164,12 +169,16 @@ export const useHandleMap = ({
       if (!res.ok || data?.success === false) {
         throw new Error(data?.message ?? "Failed to save area.");
       }
-      layer.__managedAreaId = data?.data?.id;
+      const id = data?.data?.id;
+      const featureId = feature?.id;
+      if (featureId) {
+        draw.setFeatureProperty(featureId, "managedAreaId", id);
+        draw.setFeatureProperty(featureId, "saved", true);
+        if (name) draw.setFeatureProperty(featureId, "name", name);
+      }
       if (data?.data) {
         managedAreas.value = [data.data, ...managedAreas.value];
       }
-      applyLayerStyle(layer, savedStyle);
-      bindContextMenu(layer, true);
       message.success("Area saved.");
     } catch (error) {
       const msg = (error as Error)?.message ?? "Failed to save area.";
@@ -177,12 +186,15 @@ export const useHandleMap = ({
     }
   };
 
-  const clearLayer = async (layer: any, isSaved: boolean) => {
+  const clearFeature = async (feature: any, isSaved: boolean) => {
+    const draw = drawRef.value;
+    if (!draw) return;
     try {
-      if (isSaved && layer.__managedAreaId) {
+      const managedAreaId = feature?.properties?.managedAreaId;
+      if (isSaved && managedAreaId) {
         const headers = getAuthHeaders();
         const res = await fetch(
-          `${apiConfig.auth}/managed-areas/${layer.__managedAreaId}`,
+          `${apiConfig.auth}/managed-areas/${managedAreaId}`,
           {
             method: "DELETE",
             headers,
@@ -193,11 +205,13 @@ export const useHandleMap = ({
           throw new Error(data?.message ?? "Failed to delete area.");
         }
         managedAreas.value = managedAreas.value.filter(
-          (area) => area.id !== layer.__managedAreaId
+          (area) => area.id !== managedAreaId
         );
         message.success("Area removed.");
       }
-      drawnItemsRef.value?.removeLayer(layer);
+      if (feature?.id) {
+        draw.delete(feature.id);
+      }
     } catch (error) {
       const msg = (error as Error)?.message ?? "Failed to delete area.";
       message.error(msg);
@@ -205,35 +219,21 @@ export const useHandleMap = ({
   };
 
   const addManagedAreaLayer = (area: any) => {
-    const L = leafletRef.value;
-    const mapInstance = mapRef.value;
-    const drawnItems = drawnItemsRef.value;
-    if (!L || !mapInstance || !drawnItems) return;
+    const draw = drawRef.value;
+    if (!draw) return;
     const geometry = area?.geometry;
     if (!geometry) return;
-
-    const layer = L.geoJSON(geometry, {
-      style: savedStyle,
-    });
-
-    layer.eachLayer((child: any) => {
-      child.__managedAreaId = area?.id;
-      bindContextMenu(child, true);
-    });
-
-    layer.addTo(drawnItems);
-  };
-
-  const removeSavedLayers = () => {
-    const drawnItems = drawnItemsRef.value;
-    if (!drawnItems) return;
-    const toRemove: any[] = [];
-    drawnItems.eachLayer((layer: any) => {
-      if (layer?.__managedAreaId) {
-        toRemove.push(layer);
-      }
-    });
-    toRemove.forEach((layer) => drawnItems.removeLayer(layer));
+    draw.add({
+      type: "Feature",
+      id: `managed-${area?.id}`,
+      properties: {
+        managedAreaId: area?.id,
+        saved: true,
+        name: area?.name,
+        geom_type: area?.geom_type ?? "polygon",
+      },
+      geometry,
+    } as any);
   };
 
   const loadManagedAreas = async (force = false) => {
@@ -256,8 +256,14 @@ export const useHandleMap = ({
           ? data.data
           : [];
       managedAreas.value = items;
-      if (force) {
-        removeSavedLayers();
+      if (force && drawRef.value) {
+        const draw = drawRef.value;
+        const all = draw.getAll();
+        all.features.forEach((feature: any) => {
+          if (feature?.properties?.managedAreaId) {
+            draw.delete(feature.id);
+          }
+        });
       }
       items.forEach(addManagedAreaLayer);
       hasLoadedAreas.value = true;
@@ -275,23 +281,27 @@ export const useHandleMap = ({
 
   const focusArea = (area: any) => {
     const mapInstance = mapRef.value;
-    const L = leafletRef.value;
-    if (!mapInstance || !L) return;
+    if (!mapInstance) return;
     if (Array.isArray(area?.bbox) && area.bbox.length === 4) {
       const [minLng, minLat, maxLng, maxLat] = area.bbox;
       mapInstance.fitBounds(
         [
-          [minLat, minLng],
-          [maxLat, maxLng],
+          [minLng, minLat],
+          [maxLng, maxLat],
         ],
-        { padding: [20, 20] }
+        { padding: 20 }
       );
       return;
     }
-    if (area?.geometry) {
-      const layer = L.geoJSON(area.geometry);
-      mapInstance.fitBounds(layer.getBounds(), { padding: [20, 20] });
-    }
+    const bbox = getGeometryBbox(area?.geometry);
+    if (!bbox) return;
+    mapInstance.fitBounds(
+      [
+        [bbox[0], bbox[1]],
+        [bbox[2], bbox[3]],
+      ],
+      { padding: 20 }
+    );
   };
 
   const deleteArea = async (area: any) => {
@@ -309,15 +319,14 @@ export const useHandleMap = ({
       managedAreas.value = managedAreas.value.filter(
         (item) => item.id !== area.id
       );
-      const drawnItems = drawnItemsRef.value;
-      if (drawnItems) {
-        const toRemove: any[] = [];
-        drawnItems.eachLayer((layer: any) => {
-          if (layer?.__managedAreaId === area.id) {
-            toRemove.push(layer);
+      const draw = drawRef.value;
+      if (draw) {
+        const all = draw.getAll();
+        all.features.forEach((feature: any) => {
+          if (feature?.properties?.managedAreaId === area.id) {
+            draw.delete(feature.id);
           }
         });
-        toRemove.forEach((layer) => drawnItems.removeLayer(layer));
       }
       message.success("Area removed.");
     } catch (error) {
@@ -326,18 +335,48 @@ export const useHandleMap = ({
     }
   };
 
+  const registerDrawHandlers = () => {
+    const mapInstance = mapRef.value;
+    const draw = drawRef.value;
+    if (!mapInstance || !draw) return;
+    if (hasRegisteredHandlers.value) return;
+    hasRegisteredHandlers.value = true;
+
+    mapInstance.on("draw.create", (event: any) => {
+      const feature = event?.features?.[0];
+      if (!feature) return;
+      if (feature?.id) {
+        draw.setFeatureProperty(feature.id, "saved", false);
+        draw.setFeatureProperty(feature.id, "geom_type", "polygon");
+      }
+      if (event?.lngLat) {
+        showContextMenu(feature, event.lngLat, false);
+      }
+    });
+
+    mapInstance.on("contextmenu", (event: any) => {
+      const ids = (draw as any).getFeatureIdsAt?.(event.point) as
+        | string[]
+        | undefined;
+      if (!ids || ids.length === 0) return;
+      const firstId = ids[0];
+      if (!firstId) return;
+      const feature = draw.get(firstId);
+      if (!feature) return;
+      const isSaved = Boolean(feature?.properties?.managedAreaId);
+      showContextMenu(feature, event.lngLat, isSaved);
+    });
+  };
+
   return {
     isAreasLoading,
     managedAreas,
-    pendingStyle,
-    savedStyle,
-    applyLayerStyle,
-    bindContextMenu,
     loadManagedAreas,
     refreshAreas,
     focusArea,
     deleteArea,
-    removeSavedLayers,
     addManagedAreaLayer,
+    registerDrawHandlers,
+    closeContextMenu,
   };
 };

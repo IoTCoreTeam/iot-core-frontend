@@ -55,58 +55,74 @@
 
         <!-- Connected Nodes Section -->
         <section class="space-y-4">
-          <div class="flex items-center justify-between pb-3 border-b border-gray-200">
-            <div></div>
-            <span class="text-xs text-gray-500">{{ nodes.length }} connected nodes</span>
-          </div>
+          <DataBoxCard
+            :is-loading="false"
+            :has-data="pagedNodes.length > 0"
+            :columns="6"
+            :elevated="false"
+            :padded="false"
+            :pagination="{
+              page: nodesPage,
+              perPage: nodesPerPage,
+              lastPage: nodesLastPage,
+              total: nodesTotal,
+            }"
+            @prev-page="nodesPage = Math.max(1, nodesPage - 1)"
+            @next-page="nodesPage = Math.min(nodesLastPage, nodesPage + 1)"
+            @change-per-page="(value) => { nodesPerPage = value; nodesPage = 1; }"
+          >
+            <template #header>
+              <div></div>
+              <span class="text-xs text-gray-500">{{ nodesTotal }} connected nodes</span>
+            </template>
 
-          <!-- Table -->
-          <div class="rounded-lg border border-gray-200 overflow-hidden bg-white">
-            <div v-if="nodes.length === 0" class="p-6 text-center text-gray-500">
-              <p class="text-xs mt-1">No nodes connected to this gateway.</p>
-            </div>
+            <template #head>
+              <tr class="bg-slate-50 border-b border-gray-200">
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">ID</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">Name</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">MAC</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">Status</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">Registered</th>
+                <th class="px-4 py-3 text-left font-semibold text-gray-600">Last Seen</th>
+              </tr>
+            </template>
 
-            <table v-else class="w-full text-xs">
-              <thead class="bg-slate-50 border-b border-gray-200">
-                <tr>
-                  <th class="px-4 py-3 text-left font-semibold text-gray-600">ID</th>
-                  <th class="px-4 py-3 text-left font-semibold text-gray-600">Name</th>
-                  <th class="px-4 py-3 text-left font-semibold text-gray-600">MAC</th>
-                  <th class="px-4 py-3 text-left font-semibold text-gray-600">Status</th>
-                  <th class="px-4 py-3 text-left font-semibold text-gray-600">Registered</th>
-                  <th class="px-4 py-3 text-left font-semibold text-gray-600">Last Seen</th>
-                </tr>
-              </thead>
+            <template #default>
+              <tr
+                v-for="node in pagedNodes"
+                :key="node.id"
+                class="border-b border-gray-100 hover:bg-slate-50 transition-colors duration-150"
+              >
+                <td class="px-4 py-3 text-gray-700 text-xs">{{ node.id }}</td>
+                <td class="px-4 py-3 text-gray-900 text-xs">{{ node.name }}</td>
+                <td class="px-4 py-3 text-gray-700 text-xs">{{ node.mac || "N/A" }}</td>
 
-              <tbody>
-                <tr
-                  v-for="node in nodes"
-                  :key="node.id"
-                  class="border-b border-gray-100 hover:bg-slate-50 transition-colors duration-150"
-                >
-                  <td class="px-4 py-3 text-gray-700 text-xs">{{ node.id }}</td>
-                  <td class="px-4 py-3 text-gray-900 text-xs">{{ node.name }}</td>
-                  <td class="px-4 py-3 text-gray-700 text-xs">{{ node.mac || "N/A" }}</td>
+                <!-- Status -->
+                <td class="px-4 py-3 text-left font-semibold text-xs">
+                  <span :class="statusTextClass(node.status)">{{ node.status }}</span>
+                </td>
 
-                  <!-- Status -->
-                  <td class="px-4 py-3 text-left font-semibold  text-xs">
-                    <span :class="statusTextClass(node.status)">{{ node.status }}</span>
-                  </td>
+                <!-- Registered -->
+                <td class="px-4 py-3 text-left font-semibold text-xs">
+                  <span :class="registeredTextClass(node.registered)">
+                    {{ String(node.registered) }}
+                  </span>
+                </td>
 
-                  <!-- Registered -->
-                  <td class="px-4 py-3 text-left font-semibold  text-xs">
-                    <span :class="registeredTextClass(node.registered)">
-                      {{ String(node.registered) }}
-                    </span>
-                  </td>
+                <td class="px-4 py-3 text-gray-600 whitespace-nowrap text-xs">
+                  {{ formatLastSeen(node.lastSeen) }}
+                </td>
+              </tr>
+            </template>
 
-                  <td class="px-4 py-3 text-gray-600 whitespace-nowrap text-xs">
-                    {{ formatLastSeen(node.lastSeen) }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+            <template #empty>
+              No nodes connected to this gateway.
+            </template>
+
+            <template #footer>
+              <span>Showing {{ pagedNodes.length }} of {{ nodesTotal }} entries.</span>
+            </template>
+          </DataBoxCard>
         </section>
       </template>
     </div>
@@ -116,6 +132,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import BaseModal from "../BaseModal.vue";
+import DataBoxCard from "@/components/common/DataBoxCard.vue";
 import type { DeviceRow } from "@/types/devices-control";
 import { formatIotDateTime } from "~~/config/iot-time-format";
 
@@ -156,6 +173,24 @@ watch(
 
 const gateway = computed(() => props.gateway);
 const nodes = computed(() => props.nodes);
+
+const nodesPage = ref(1);
+const nodesPerPage = ref(5);
+const nodesTotal = computed(() => nodes.value.length);
+const nodesLastPage = computed(() =>
+  Math.max(1, Math.ceil(nodesTotal.value / Math.max(1, nodesPerPage.value))),
+);
+
+const pagedNodes = computed(() => {
+  const start = (nodesPage.value - 1) * nodesPerPage.value;
+  return nodes.value.slice(start, start + nodesPerPage.value);
+});
+
+watch([nodesTotal, nodesLastPage], () => {
+  if (nodesPage.value > nodesLastPage.value) {
+    nodesPage.value = nodesLastPage.value;
+  }
+});
 
 const statusTextClass = (status?: string | null) => {
   if (!status) return "text-gray-500 uppercase";

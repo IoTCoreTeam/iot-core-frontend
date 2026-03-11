@@ -185,7 +185,7 @@
           </div>
         </div>
         <template #footer>
-          <div class="flex justify-end p-2 border-t">
+          <div class="flex justify-end p-2">
             <a-button type="link" class="text-xs">Mark all as read</a-button>
           </div>
         </template>
