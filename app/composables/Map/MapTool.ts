@@ -4,7 +4,8 @@ import { message } from "ant-design-vue";
 import { MAP_DEFAULT_CENTER } from "~~/config/map";
 
 type MapToolDeps = {
-  mapRef: Ref<MapLibreMap | null>;
+  mapRef?: Ref<MapLibreMap | null>;
+  getMap?: () => MapLibreMap | null;
   defaultCenter?: [number, number];
   defaultZoom?: number;
 };
@@ -15,6 +16,7 @@ export const DEFAULT_ZOOM = 15;
 
 export const useMapTool = ({
   mapRef,
+  getMap,
   defaultCenter = DEFAULT_CENTER,
   defaultZoom = DEFAULT_ZOOM,
 }: MapToolDeps) => {
@@ -22,7 +24,7 @@ export const useMapTool = ({
   const lngInput = ref<string>("");
 
   const zoomToInput = () => {
-    const mapInstance = mapRef.value;
+    const mapInstance = getMap ? getMap() : mapRef?.value ?? null;
     if (!mapInstance) return;
     if (!latInput.value.trim() || !lngInput.value.trim()) {
       message.warning("Latitude and longitude are required.");
@@ -46,7 +48,7 @@ export const useMapTool = ({
   };
 
   const resetMapView = () => {
-    const mapInstance = mapRef.value;
+    const mapInstance = getMap ? getMap() : mapRef?.value ?? null;
     if (!mapInstance) return;
     mapInstance.flyTo({ center: defaultCenter, zoom: defaultZoom });
   };

@@ -25,9 +25,9 @@
     </div>
 
     <div class="flex-1 overflow-auto min-h-0">
-      <div v-if="activeTab === 'map'" class="h-full">
+      <div v-if="activeTab === 'map'" class="h-full flex flex-col min-h-0">
         <DataBoxCard
-          class="w-full h-full border-0 shadow-none"
+          class="w-full flex-1 min-h-0 border-0 shadow-none"
           :is-loading="areasLoading"
           :columns="2"
           :has-data="pagedAreas.length > 0"
@@ -71,6 +71,15 @@
                   >
                     <BootstrapIcon name="geo-alt" class="w-3 h-3" />
                   </button>
+                  <button
+                    type="button"
+                    class="w-8 h-8 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 cursor-pointer"
+                    @click="handleShowAreaNodes(area)"
+                    title="Show nodes in area"
+                    aria-label="Show nodes in area"
+                  >
+                    <BootstrapIcon name="list-ul" class="w-3 h-3" />
+                  </button>
                 </div>
               </td>
             </tr>
@@ -88,7 +97,7 @@
         v-else
         :is-loading="false"
         :has-data="displayedDevices.length > 0"
-        :columns="4"
+        :columns="deviceColumns"
         :elevated="false"
         :padded="false"
         :scroll-body="true"
@@ -110,6 +119,12 @@
             <th class="px-3 py-2 text-left font-semibold">Name</th>
             <th class="px-3 py-2 text-center font-semibold">Registered</th>
             <th class="px-3 py-2 text-right font-semibold">Last Seen</th>
+            <th
+              v-if="activeTab === 'node'"
+              class="px-3 py-2 text-right font-semibold"
+            >
+              Actions
+            </th>
           </tr>
         </template>
 
@@ -133,6 +148,17 @@
             <td class="px-3 text-right text-gray-600">
               {{ formatLastSeen(device.lastSeen ?? null) }}
             </td>
+            <td v-if="activeTab === 'node'" class="px-3 text-right">
+              <button
+                type="button"
+                class="w-8 h-8 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 cursor-pointer"
+                title="Zoom to node"
+                aria-label="Zoom to node"
+                @click="handleZoomToNode(device)"
+              >
+                <BootstrapIcon name="geo-alt" class="w-3 h-3" />
+              </button>
+            </td>
           </tr>
         </template>
 
@@ -144,13 +170,24 @@
       </DataBoxCard>
     </div>
   </div>
+
+  <AreaNodesModal
+    v-if="isAreaNodesModalOpen"
+    v-model="isAreaNodesModalOpen"
+    :area="selectedArea"
+    :nodes="areaNodes"
+    :gateways="gatewayRows"
+    @close="clearSelectedArea"
+  />
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount, watch } from "vue";
 import DataBoxCard from "@/components/common/DataBoxCard.vue";
+import AreaNodesModal from "@/components/Modals/Maps/AreaNodesModal.vue";
 import type { DeviceRow } from "@/types/devices-control";
 import { useLoadDataRow } from "@/composables/DeviceRegistration/loadDataRow";
+import { filterNodesInArea } from "@/composables/Map/useNodesInArea";
 import {
   createNodeCollectionsStore,
   type GatewayEventPayload,
@@ -171,6 +208,7 @@ const props = withDefaults(
     mapIsAreasLoading?: boolean;
     mapManagedAreas?: any[];
     mapFocusArea?: (area: any) => void;
+    mapZoomToNode?: (node: DeviceRow) => void;
   }>(),
   {
     defaultTab: "gateway",
@@ -233,6 +271,17 @@ const enableDeviceSse = computed(() => props.enableDeviceSse);
 const enableMapAreasFetch = computed(() => props.enableMapAreasFetch);
 const hasExternalAreas = computed(() => props.mapManagedAreas !== undefined);
 const externalAreas = computed(() => props.mapManagedAreas ?? []);
+const deviceColumns = computed(() => (activeTab.value === "node" ? 4 : 3));
+const isAreaNodesModalOpen = ref(false);
+const selectedArea = ref<any | null>(null);
+const selectedAreaLabel = computed(() => {
+  if (!selectedArea.value) return "";
+  return selectedArea.value?.name || `Area ${selectedArea.value?.id ?? ""}`;
+});
+const areaNodes = computed(() => {
+  if (!selectedArea.value) return [];
+  return filterNodesInArea(nodeRows.value, selectedArea.value);
+});
 
 const authStore = useAuthStore();
 const internalAreas = ref<any[]>([]);
@@ -340,6 +389,22 @@ function registeredClass(value?: boolean) {
 
 function handleFocusArea(area: any) {
   props.mapFocusArea?.(area);
+}
+
+function handleZoomToNode(node: DeviceRow) {
+  props.mapZoomToNode?.(node);
+}
+
+function handleShowAreaNodes(area: any) {
+  if (!area) return;
+  selectedArea.value = area;
+  props.mapFocusArea?.(area);
+  isAreaNodesModalOpen.value = true;
+}
+
+function clearSelectedArea() {
+  selectedArea.value = null;
+  isAreaNodesModalOpen.value = false;
 }
 
 async function loadManagedAreasInternal() {

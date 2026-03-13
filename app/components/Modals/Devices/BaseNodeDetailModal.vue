@@ -7,10 +7,7 @@
     @request-close="handleClose"
   >
     <div class="space-y-6 text-xs text-gray-700">
-      <LoadingState
-        v-if="loading"
-        message="Loading node details..."
-      />
+      <LoadingState v-if="loading" message="Loading node details..." />
 
       <div
         v-else-if="!nodeView"
@@ -21,18 +18,26 @@
 
       <template v-else>
         <section class="space-y-4">
-          <div class="flex items-center justify-between border-b border-gray-200 pb-2">
-            <h4 class="text-xs font-semibold text-gray-700">Node Information</h4>
+          <div
+            class="flex items-center justify-between border-b border-gray-200 pb-2"
+          >
+            <h4 class="text-xs font-semibold text-gray-700">
+              Node Information
+            </h4>
             <span class="text-[10px] uppercase tracking-wider text-gray-500">
               {{ nodeView.externalId }}
             </span>
           </div>
 
-          <div class="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div
+            class="rounded-lg border border-gray-200 bg-white overflow-hidden"
+          >
             <table class="w-full text-xs">
               <tbody>
                 <tr class="border-b border-gray-100">
-                  <td class="w-40 px-4 py-3 text-gray-500 uppercase tracking-wider text-[10px]">
+                  <td
+                    class="w-40 px-4 py-3 text-gray-500 uppercase tracking-wider text-[10px]"
+                  >
                     Name
                   </td>
                   <td class="px-4 py-3 text-gray-900 break-all">
@@ -40,7 +45,9 @@
                   </td>
                 </tr>
                 <tr class="border-b border-gray-100">
-                  <td class="w-40 px-4 py-3 text-gray-500 uppercase tracking-wider text-[10px]">
+                  <td
+                    class="w-40 px-4 py-3 text-gray-500 uppercase tracking-wider text-[10px]"
+                  >
                     Type
                   </td>
                   <td class="px-4 py-3 text-gray-900">
@@ -48,7 +55,9 @@
                   </td>
                 </tr>
                 <tr class="border-b border-gray-100">
-                  <td class="w-40 px-4 py-3 text-gray-500 uppercase tracking-wider text-[10px]">
+                  <td
+                    class="w-40 px-4 py-3 text-gray-500 uppercase tracking-wider text-[10px]"
+                  >
                     Gateway ID
                   </td>
                   <td class="px-4 py-3 text-gray-900 break-all">
@@ -56,7 +65,9 @@
                   </td>
                 </tr>
                 <tr class="border-b border-gray-100">
-                  <td class="w-40 px-4 py-3 text-gray-500 uppercase tracking-wider text-[10px]">
+                  <td
+                    class="w-40 px-4 py-3 text-gray-500 uppercase tracking-wider text-[10px]"
+                  >
                     MAC
                   </td>
                   <td class="px-4 py-3 text-gray-900 break-all">
@@ -64,7 +75,9 @@
                   </td>
                 </tr>
                 <tr>
-                  <td class="w-40 px-4 py-3 text-gray-500 uppercase tracking-wider text-[10px]">
+                  <td
+                    class="w-40 px-4 py-3 text-gray-500 uppercase tracking-wider text-[10px]"
+                  >
                     Last Seen
                   </td>
                   <td class="px-4 py-3 text-gray-900">
@@ -77,34 +90,56 @@
         </section>
 
         <section class="space-y-4">
-          <div class="flex items-center justify-between border-b border-gray-200 pb-2">
-            <h4 class="text-xs font-semibold text-gray-700">Connected Nodes</h4>
+          <div
+            class="flex items-center justify-between border-b border-gray-200 pb-2"
+          >
+            <h4 class="text-xs font-semibold text-gray-700">Assigned Maps</h4>
             <span class="text-[10px] uppercase tracking-wider text-gray-500">
-              {{ connectedNodes.length }}
+              {{ selectedMapIds.length }}
             </span>
           </div>
-          <div class="rounded-lg border border-gray-200 bg-white px-4 py-3">
-            <div v-if="connectedNodes.length === 0" class="text-gray-500 text-xs">
-              No connected nodes reported.
-            </div>
-            <div v-else class="flex flex-wrap gap-2">
-              <span
-                v-for="nodeId in connectedNodes"
-                :key="nodeId"
-                class="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700"
+          <div class="flex flex-col gap-3">
+            <a-select
+              v-model:value="selectedMapIds"
+              :options="availableMapOptions"
+              mode="multiple"
+              size="middle"
+              placeholder="Select maps to assign"
+              class="w-full text-xs"
+              :loading="isLoadingMaps"
+              @popupScroll="popupScroll"
+              :getPopupContainer="(triggerNode) => triggerNode.parentNode"
+            ></a-select>
+            <div class="flex justify-end">
+              <button
+                type="button"
+                class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-1.5 text-xs transition-colors"
+                :disabled="isSavingMaps"
+                @click="saveAssignedMaps"
               >
-                {{ nodeId }}
-              </span>
+                <BootstrapIcon
+                  v-if="isSavingMaps"
+                  name="arrow-clockwise"
+                  class="w-3 h-3 mr-1.5 animate-spin"
+                />
+                {{ isSavingMaps ? "Saving..." : "Save maps" }}
+              </button>
             </div>
           </div>
         </section>
 
         <section v-if="hasExtendedSlot" class="space-y-4">
-          <div class="flex items-center justify-between border-b border-gray-200 pb-2">
-            <h4 class="text-xs font-semibold text-gray-700">{{ extendedTitle }}</h4>
+          <div
+            class="flex items-center justify-between border-b border-gray-200 pb-2"
+          >
+            <h4 class="text-xs font-semibold text-gray-700">
+              {{ extendedTitle }}
+            </h4>
             <slot name="extended-header" />
           </div>
-          <div class="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div
+            class="rounded-lg border border-gray-200 bg-white overflow-hidden"
+          >
             <table class="w-full text-xs">
               <tbody>
                 <slot />
@@ -122,11 +157,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, useSlots } from "vue";
+import { computed, useSlots, ref, watch } from "vue";
 import LoadingState from "@/components/common/LoadingState.vue";
 import BaseModal from "../BaseModal.vue";
 import type { NodeInfo } from "@/types/devices-control";
 import { formatIotDateTime } from "~~/config/iot-time-format";
+import { apiConfig } from "~~/config/api";
+import { useAuthStore } from "~~/stores/auth";
+import { message } from "ant-design-vue";
+
+const popupScroll = () => {
+  console.log("popupScroll");
+};
 
 const props = withDefaults(
   defineProps<{
@@ -140,7 +182,7 @@ const props = withDefaults(
   {
     title: "Node Details",
     extendedTitle: "Extended Details",
-    maxWidth: "max-w-4xl",
+    maxWidth: "max-w-3xl",
     loading: false,
   },
 );
@@ -154,11 +196,117 @@ const slots = useSlots();
 const hasExtendedSlot = computed(() => Boolean(slots.default));
 const hasFooterSlot = computed(() => Boolean(slots.footer));
 
-const connectedNodes = computed(() => {
-  const nodes = props.node?.connected_nodes;
-  if (!Array.isArray(nodes)) return [];
-  return nodes.map((item) => String(item).trim()).filter(Boolean);
+const authStore = useAuthStore();
+const isLoadingMaps = ref(false);
+const isSavingMaps = ref(false);
+const availableMaps = ref<any[]>([]);
+const selectedMapIds = ref<number[]>([]);
+
+import type { SelectProps } from "ant-design-vue";
+
+const availableMapOptions = computed<SelectProps["options"]>(() => {
+  return availableMaps.value.map((map) => ({
+    label: String(map.name),
+    value: Number(map.id),
+  }));
 });
+
+async function fetchAvailableMaps() {
+  if (!import.meta.client) return;
+  isLoadingMaps.value = true;
+  try {
+    const res = await fetch(`${apiConfig.auth}/managed-areas`, {
+      headers: { Authorization: authStore.authorizationHeader! },
+    });
+    if (!res.ok) throw new Error("Failed to fetch maps");
+    const responseData = await res.json();
+    let mapsArray = [];
+    if (Array.isArray(responseData)) {
+      mapsArray = responseData;
+    } else if (responseData?.data && Array.isArray(responseData.data)) {
+      mapsArray = responseData.data;
+    } else if (
+      responseData?.data?.data &&
+      Array.isArray(responseData.data.data)
+    ) {
+      mapsArray = responseData.data.data;
+    }
+    availableMaps.value = mapsArray;
+  } catch (error) {
+    console.error(error);
+  } finally {
+    isLoadingMaps.value = false;
+  }
+}
+
+async function fetchNodeAssignedMaps() {
+  if (!import.meta.client || !props.node?.external_id) return;
+  isLoadingMaps.value = true;
+  try {
+    const res = await fetch(
+      `${apiConfig.controlModule}/nodes?external_id=${props.node.external_id}`,
+      {
+        headers: { Authorization: authStore.authorizationHeader! },
+      },
+    );
+    if (!res.ok) throw new Error("Failed to fetch node details");
+    const responseData = await res.json();
+    let nodeData = null;
+    if (responseData?.data && Array.isArray(responseData.data)) {
+      nodeData = responseData.data[0];
+    } else if (
+      responseData?.data?.data &&
+      Array.isArray(responseData.data.data)
+    ) {
+      nodeData = responseData.data.data[0];
+    }
+    if (nodeData && nodeData.managed_areas) {
+      selectedMapIds.value = nodeData.managed_areas.map((m: any) => m.id);
+    }
+  } catch (error) {
+    console.error(error);
+  } finally {
+    isLoadingMaps.value = false;
+  }
+}
+
+async function saveAssignedMaps() {
+  if (!props.node?.external_id) return;
+  isSavingMaps.value = true;
+  try {
+    const res = await fetch(
+      `${apiConfig.auth}/managed-areas/nodes/${props.node.external_id}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: authStore.authorizationHeader!,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ managed_area_ids: selectedMapIds.value }),
+      },
+    );
+    if (!res.ok) throw new Error("Failed to assign maps");
+    message.success("Maps assigned successfully.");
+  } catch (error) {
+    console.error(error);
+    message.error("Failed to assign maps.");
+  } finally {
+    isSavingMaps.value = false;
+  }
+}
+
+watch(
+  () => props.modelValue,
+  (isOpen) => {
+    if (isOpen) {
+      selectedMapIds.value = [];
+      fetchAvailableMaps();
+      fetchNodeAssignedMaps();
+    }
+  },
+  { immediate: true },
+);
 
 const nodeView = computed(() => {
   const node = props.node as NodeInfo | null;
@@ -182,7 +330,6 @@ const nodeView = computed(() => {
     lastSeen: formatLastSeen(node.last_seen),
   };
 });
-
 
 function formatValue(value: unknown) {
   if (value === null || value === undefined || value === "") return "N/A";

@@ -16,6 +16,7 @@
             :map-is-areas-loading="mapIsAreasLoading"
             :map-managed-areas="mapManagedAreas"
             :map-focus-area="handleFocusArea"
+            :map-zoom-to-node="handleZoomToNode"
           />
         </div>
       </div>
@@ -50,9 +51,11 @@ const props = withDefaults(
 const { sectionClass, layoutClass, mapPaneClass, sidePaneClass, mapHeight } = props;
 
 type MapCanvasExpose = {
+  mapRef: Ref<any | null>;
   managedAreas: Ref<any[]>;
   isAreasLoading: Ref<boolean>;
   focusArea: (area: any) => void;
+  zoomToNode: (node: any) => void;
 };
 
 const mapCanvasRef = ref<MapCanvasExpose | null>(null);
@@ -71,5 +74,9 @@ const mapIsAreasLoading = computed(() => {
 
 function handleFocusArea(area: any) {
   mapCanvasRef.value?.focusArea?.(area);
+}
+
+function handleZoomToNode(node: any) {
+  mapCanvasRef.value?.zoomToNode?.(node);
 }
 </script>

@@ -45,7 +45,7 @@
 import type { DeviceRow } from "@/types/devices-control";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
-import { computed, onMounted, onBeforeUnmount, ref, nextTick, watch, shallowRef } from "vue";
+import { computed, onMounted, onBeforeUnmount, ref, nextTick, watch, shallowRef, createApp, defineComponent, h } from "vue";
 import { message } from "ant-design-vue";
 import { DEFAULT_CENTER, DEFAULT_ZOOM } from "@/composables/Map/MapTool";
 import { useMapSectionActiveDevices } from "@/composables/MapSection/useMapSectionActiveDevices";
@@ -82,6 +82,7 @@ const drawRef = shallowRef<MapboxDraw | null>(null);
 const maplibreRef = shallowRef<typeof import("maplibre-gl") | null>(null);
 const isMapLoaded = ref(false);
 const nodeMarkers = new Map<string, Marker>();
+const nodePopups = new Map<string, { cleanup: () => void }>();
 const connectionSourceId = "node-connections";
 const connectionLayerId = "node-connections-line";
 const routeSourceId = "nearest-route";
@@ -239,12 +240,33 @@ function zoomToNode(row: DeviceRow) {
   mapRef.value.flyTo({ center: [coords.lng, coords.lat], zoom: 18 });
 }
 
-function buildNodeMarkerPopup(row: DeviceRow) {
-  const label = row.name ?? row.id ?? "Node";
-  const status = row.status ?? "unknown";
-  const lat = typeof row.lat === "number" ? row.lat.toFixed(6) : "N/A";
-  const lng = typeof row.lng === "number" ? row.lng.toFixed(6) : "N/A";
-  return `<div class="text-xs"><strong>${label}</strong><br/>${row.id} - ${status}<br/>${lat}, ${lng}</div>`;
+function createNodePopupContent(row: DeviceRow) {
+  const container = document.createElement("div");
+  container.className = "text-xs text-gray-700";
+
+  const PopupContent = defineComponent({
+    name: "NodeAreaPopup",
+    setup() {
+      return () =>
+        h("div", { class: "space-y-1" }, [
+          h("div", { class: "font-semibold text-gray-800" }, row.name ?? row.id ?? "Node"),
+          h("div", { class: "text-gray-500" }, `${row.id} - ${row.status ?? "unknown"}`),
+          h("div", { class: "text-gray-500" }, `${row.lat?.toFixed?.(6) ?? "N/A"}, ${row.lng?.toFixed?.(6) ?? "N/A"}`),
+        ]);
+    },
+  });
+
+  const app = createApp(PopupContent);
+  app.mount(container);
+
+  return {
+    container,
+    cleanup: () => app.unmount(),
+  };
+}
+
+function getNodeMarkerColor(row: DeviceRow) {
+  return row.registered === false ? "#ef4444" : "#2563eb";
 }
 
 function syncNodeMarkers() {
@@ -260,22 +282,43 @@ function syncNodeMarkers() {
     if (!coords) return;
     nextIds.add(row.id);
 
+    const desiredColor = getNodeMarkerColor(row);
     const existing = nodeMarkers.get(row.id);
     if (existing) {
-      existing.setLngLat([coords.lng, coords.lat]);
-      existing.getPopup()?.setHTML(buildNodeMarkerPopup(row));
-      return;
+      const existingColor = existing.getElement()?.dataset?.color;
+      if (existingColor !== desiredColor) {
+        existing.remove();
+        nodeMarkers.delete(row.id);
+        const popup = nodePopups.get(row.id);
+        if (popup) {
+          popup.cleanup();
+          nodePopups.delete(row.id);
+        }
+      } else {
+        existing.setLngLat([coords.lng, coords.lat]);
+        const popupContent = createNodePopupContent(row);
+        existing.getPopup()?.setDOMContent(popupContent.container);
+        const previous = nodePopups.get(row.id);
+        if (previous) {
+          previous.cleanup();
+        }
+        nodePopups.set(row.id, { cleanup: popupContent.cleanup });
+        return;
+      }
     }
 
-    const popup = new maplibre.Popup({ offset: 12 }).setHTML(
-      buildNodeMarkerPopup(row)
+    const popupContent = createNodePopupContent(row);
+    const popup = new maplibre.Popup({ offset: 12 }).setDOMContent(
+      popupContent.container
     );
     const marker = new maplibre.Marker({
-      color: "#2563eb",
+      color: desiredColor,
     })
       .setLngLat([coords.lng, coords.lat])
       .setPopup(popup)
       .addTo(mapInstance);
+    marker.getElement().dataset.color = desiredColor;
+    nodePopups.set(row.id, { cleanup: popupContent.cleanup });
     nodeMarkers.set(row.id, marker);
   });
 
@@ -283,6 +326,11 @@ function syncNodeMarkers() {
     if (nextIds.has(id)) return;
     marker.remove();
     nodeMarkers.delete(id);
+    const popup = nodePopups.get(id);
+    if (popup) {
+      popup.cleanup();
+      nodePopups.delete(id);
+    }
   });
 }
 
@@ -447,6 +495,15 @@ watch(
 );
 
 watch(
+  managedAreas,
+  () => {
+    if (!isMapLoaded.value) return;
+    syncNodeMarkers();
+  },
+  { deep: true },
+);
+
+watch(
   routePathIds,
   () => {
     if (!isMapLoaded.value) return;
@@ -527,11 +584,14 @@ onBeforeUnmount(() => {
   }
   nodeMarkers.forEach((marker) => marker.remove());
   nodeMarkers.clear();
+  nodePopups.forEach((popup) => popup.cleanup());
+  nodePopups.clear();
   drawRef.value = null;
   maplibreRef.value = null;
 });
 
 defineExpose({
+  mapRef,
   isAreasLoading,
   managedAreas,
   focusArea,
