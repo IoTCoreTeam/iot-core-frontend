@@ -1,5 +1,8 @@
 <template>
-  <div class="bg-white border border-slate-200 rounded h-[60vh] max-h-[60vh] flex flex-col min-h-0">
+  <div
+    class="bg-white border border-slate-200 rounded flex flex-col min-h-0"
+    :style="panelStyle"
+  >
     <!-- Header -->
     <div
       v-if="showHeader"
@@ -7,7 +10,6 @@
     >
       <p class="text-sm font-semibold text-slate-900">Active Devices</p>
       <NuxtLink
-        v-if="showViewAll && activeTab !== 'map'"
         to="/devices-control/device-control-center"
         class="text-xs font-semibold text-blue-600 hover:text-blue-800"
       >
@@ -75,7 +77,7 @@
                     type="button"
                     class="w-8 h-8 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 cursor-pointer"
                     @click="handleShowAreaNodes(area)"
-                    title="Show nodes in area"
+                    title="Show / area"
                     aria-label="Show nodes in area"
                   >
                     <BootstrapIcon name="list-ul" class="w-3 h-3" />
@@ -229,6 +231,8 @@ const props = withDefaults(
     mapManagedAreas?: any[];
     mapFocusArea?: (area: any) => void;
     mapZoomToNode?: (node: DeviceRow) => void;
+    panelHeight?: string;
+    defaultPerPage?: number;
   }>(),
   {
     defaultTab: "gateway",
@@ -238,7 +242,14 @@ const props = withDefaults(
     enableDeviceSse: true,
     enableMapAreasFetch: true,
     mapIsAreasLoading: false,
+    panelHeight: "60vh",
+    defaultPerPage: 5,
   },
+);
+
+const resolvedDefaultPerPage = Math.max(
+  1,
+  Math.floor(Number(props.defaultPerPage) || 5),
 );
 
 // Internal State
@@ -273,7 +284,7 @@ const filteredDevices = computed(() => {
 });
 
 const devicesPage = ref(1);
-const devicesPerPage = ref(5);
+const devicesPerPage = ref(resolvedDefaultPerPage);
 const devicesTotal = computed(() => filteredDevices.value.length);
 const devicesLastPage = computed(() =>
   Math.max(1, Math.ceil(devicesTotal.value / Math.max(1, devicesPerPage.value))),
@@ -309,7 +320,7 @@ const isInternalAreasLoading = ref(false);
 const hasLoadedInternalAreas = ref(false);
 
 const areasPage = ref(1);
-const areasPerPage = ref(5);
+const areasPerPage = ref(resolvedDefaultPerPage);
 
 const areasLoading = computed(() =>
   hasExternalAreas.value ? props.mapIsAreasLoading : isInternalAreasLoading.value,
@@ -327,6 +338,12 @@ const pagedAreas = computed(() => {
   const start = (areasPage.value - 1) * areasPerPage.value;
   return areasSource.value.slice(start, start + areasPerPage.value);
 });
+
+const panelStyle = computed(() => ({
+  height: props.panelHeight,
+  minHeight: props.panelHeight,
+  maxHeight: props.panelHeight,
+}));
 
 
 watch([areasTotal, areasLastPage], () => {

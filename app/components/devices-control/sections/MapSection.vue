@@ -12,6 +12,8 @@
             :show-view-all="false"
             :show-map-tab="true"
             :enable-device-sse="true"
+            :panel-height="mapHeight"
+            :default-per-page="10"
             default-tab="map"
             :map-is-areas-loading="mapIsAreasLoading"
             :map-managed-areas="mapManagedAreas"
@@ -44,7 +46,7 @@ const props = withDefaults(
     layoutClass: "flex flex-col lg:flex-row lg:items-start gap-4",
     mapPaneClass: "w-full lg:w-3/4 overflow-hidden",
     sidePaneClass: "w-full lg:w-1/4 shrink-0 lg:self-start",
-    mapHeight: "80vh",
+    mapHeight: "90vh",
   },
 );
 

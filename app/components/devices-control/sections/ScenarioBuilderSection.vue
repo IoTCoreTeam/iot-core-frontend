@@ -1183,8 +1183,11 @@ function handleNodeClick(event: { node: Node<NodeData> }) {
   if (kind === "action") {
     activeNode.value = node;
     const controlInputKind = resolveControlInputTypeById(node.data?.control_url_id);
+    const rawActionValue = node.data?.action_value;
     let actionValue: "on" | "off" | number | "" =
-      node.data?.action_value ?? "";
+      typeof rawActionValue === "number" || rawActionValue === "on" || rawActionValue === "off"
+        ? rawActionValue
+        : "";
     if (controlInputKind === "analog") {
       actionValue = typeof actionValue === "number" ? actionValue : 0;
     } else if (controlInputKind === "digital") {

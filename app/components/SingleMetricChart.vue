@@ -1,5 +1,8 @@
 <template>
-  <div class="bg-white border border-slate-200 rounded p-4 h-[60vh] max-h-[60vh] flex flex-col min-h-0">
+  <div
+    class="bg-white border border-slate-200 rounded p-4 flex flex-col min-h-0"
+    :style="containerStyle"
+  >
     <div
       class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
     >
@@ -101,9 +104,11 @@ const props = withDefaults(
     deviceId?: string; // Legacy
     deviceType?: string; // Legacy
     selectedNodeId?: string;
+    containerHeight?: string;
   }>(),
   {
     selectedTimeframe: "second" as TimeframeKey,
+    containerHeight: "60vh",
   }
 );
 
@@ -138,6 +143,12 @@ const selectedMetric = computed(() =>
 
 const ALL_NODES_VALUE = "__all__";
 const internalSelectedNodeId = ref("");
+
+const containerStyle = computed(() => ({
+  height: props.containerHeight,
+  minHeight: props.containerHeight,
+  maxHeight: props.containerHeight,
+}));
 
 function updateMetricKey(value: string) {
   emit("update:selectedMetricKey", value);

@@ -11,7 +11,7 @@
     </div>
     <div
       v-else
-      class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3"
+      :class="widgetGridClass"
     >
       <div
         v-for="widget in widgets"
@@ -224,11 +224,25 @@ const props = withDefaults(
     onAnalogSaved?: (signal: any) => void;
     hasSse?: boolean;
     controllerStatesByNode?: Record<string, ControllerState[]>;
+    singleColumn?: boolean;
+    desktopColumns?: 3 | 4;
   }>(),
   {
     hasSse: true,
+    singleColumn: false,
+    desktopColumns: 3,
   },
 );
+
+const widgetGridClass = computed(() => {
+  if (props.singleColumn) {
+    return "grid grid-cols-1 gap-4";
+  }
+  if (props.desktopColumns === 4) {
+    return "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4";
+  }
+  return "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3";
+});
 
 const widgetState = ref<Record<string, boolean>>({});
 const analogValueMap = ref<Record<string, number>>({});

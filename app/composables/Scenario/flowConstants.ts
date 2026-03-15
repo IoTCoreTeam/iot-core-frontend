@@ -1,9 +1,20 @@
-import type { Edge, Node } from "@vue-flow/core";
-
 export type FlowNodeKind = "start" | "action" | "condition" | "end";
 
 export type FlowNodeData = {
   kind?: FlowNodeKind;
+};
+
+type FlowNodeLike = {
+  id: string;
+  data?: FlowNodeData | null;
+};
+
+type FlowEdgeLike = {
+  source?: string | null;
+  target?: string | null;
+  data?: {
+    branch?: unknown;
+  } | null;
 };
 
 export const FLOW_CONSTANTS = {
@@ -13,15 +24,15 @@ export const FLOW_CONSTANTS = {
   maxOutgoingForNonCondition: 1,
 } as const;
 
-export function countKind(nodes: Node<FlowNodeData>[], kind: FlowNodeKind) {
+export function countKind(nodes: FlowNodeLike[], kind: FlowNodeKind) {
   return nodes.filter((node) => node.data?.kind === kind).length;
 }
 
-export function getOutgoingEdges(edges: Edge[], sourceId: string) {
+export function getOutgoingEdges(edges: FlowEdgeLike[], sourceId: string) {
   return edges.filter((edge) => edge.source === sourceId);
 }
 
-export function resolveConditionBranch(outgoingEdges: Edge[]) {
+export function resolveConditionBranch(outgoingEdges: FlowEdgeLike[]) {
   const existing = outgoingEdges
     .map((edge) => edge.data?.branch)
     .find((branch) => branch === "true" || branch === "false");
@@ -30,17 +41,17 @@ export function resolveConditionBranch(outgoingEdges: Edge[]) {
   return null;
 }
 
-export function canCreateStart(nodes: Node<FlowNodeData>[]) {
+export function canCreateStart(nodes: FlowNodeLike[]) {
   return countKind(nodes, "start") < FLOW_CONSTANTS.maxStartNodes;
 }
 
-export function canCreateEnd(nodes: Node<FlowNodeData>[]) {
+export function canCreateEnd(nodes: FlowNodeLike[]) {
   return countKind(nodes, "end") < FLOW_CONSTANTS.maxEndNodes;
 }
 
 export function canConnectFromNode(
-  nodes: Node<FlowNodeData>[],
-  edges: Edge[],
+  nodes: FlowNodeLike[],
+  edges: FlowEdgeLike[],
   sourceId: string,
 ) {
   const sourceNode = nodes.find((node) => node.id === sourceId);
@@ -57,7 +68,7 @@ export function canConnectFromNode(
   return { ok: true, kind, outgoing };
 }
 
-export function hasPathStartToEnd(nodes: Node<FlowNodeData>[], edges: Edge[]) {
+export function hasPathStartToEnd(nodes: FlowNodeLike[], edges: FlowEdgeLike[]) {
   const start = nodes.find((node) => node.data?.kind === "start");
   const end = nodes.find((node) => node.data?.kind === "end");
   if (!start || !end) return false;
@@ -84,7 +95,7 @@ export function hasPathStartToEnd(nodes: Node<FlowNodeData>[], edges: Edge[]) {
   return false;
 }
 
-export function validateFlow(nodes: Node<FlowNodeData>[], edges: Edge[]) {
+export function validateFlow(nodes: FlowNodeLike[], edges: FlowEdgeLike[]) {
   const startCount = countKind(nodes, "start");
   const endCount = countKind(nodes, "end");
   if (startCount !== FLOW_CONSTANTS.maxStartNodes || endCount !== FLOW_CONSTANTS.maxEndNodes) {

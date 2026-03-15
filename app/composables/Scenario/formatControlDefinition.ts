@@ -1,5 +1,3 @@
-import type { Edge, Node } from "@vue-flow/core";
-
 type BranchValue = "true" | "false";
 
 export type ControlDefinitionNode = {
@@ -25,7 +23,7 @@ export type ControlDefinition = {
   edges: ControlDefinitionEdge[];
 };
 
-type NodeData = {
+type ControlNodeData = {
   kind?: "start" | "action" | "condition" | "end";
   control_url_id?: string;
   duration_seconds?: number;
@@ -35,14 +33,28 @@ type NodeData = {
   value?: number;
 };
 
+type ControlNodeLike = {
+  id?: string | null;
+  data?: ControlNodeData | null;
+};
+
+type ControlEdgeLike = {
+  source?: string | null;
+  target?: string | null;
+  label?: unknown;
+  data?: {
+    branch?: unknown;
+  } | null;
+};
+
 function normalizeBranch(value: unknown): BranchValue | null {
   if (value === "true" || value === "false") return value;
   return null;
 }
 
 export function formatControlDefinition(
-  nodes: Node<NodeData>[],
-  edges: Edge[],
+  nodes: ControlNodeLike[],
+  edges: ControlEdgeLike[],
 ): ControlDefinition {
   const formattedNodes: ControlDefinitionNode[] = nodes.map((node) => {
     const kind = node.data?.kind ?? "action";
