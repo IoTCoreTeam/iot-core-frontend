@@ -34,6 +34,7 @@ export const useMapSectionUi = ({ nodeRows }: UiDeps) => {
       lng: row.lng ?? null,
       status: row.status ?? null,
       registered: row.registered ?? null,
+      inside_map: row.inside_map ?? null,
       last_seen: row.lastSeen ?? null,
       connected_nodes: row.connectedNodes ?? null,
     };

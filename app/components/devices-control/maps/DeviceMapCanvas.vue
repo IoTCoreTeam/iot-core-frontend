@@ -266,7 +266,22 @@ function createNodePopupContent(row: DeviceRow) {
 }
 
 function getNodeMarkerColor(row: DeviceRow) {
-  return row.registered === false ? "#ef4444" : "#2563eb";
+  if (row.registered === false) return "#ef4444";
+  if (row.registered === true && row.inside_map === false) return "#eab308";
+  if (row.registered === true && row.inside_map === true) return "#22c55e";
+  return "#ef4444";
+}
+
+function createNodeMarkerElement(color: string) {
+  const el = document.createElement("div");
+  el.style.width = "14px";
+  el.style.height = "14px";
+  el.style.borderRadius = "9999px";
+  el.style.backgroundColor = color;
+  el.style.border = "2px solid #ffffff";
+  el.style.boxShadow = "0 0 0 2px rgba(15, 23, 42, 0.18)";
+  el.dataset.color = color;
+  return el;
 }
 
 function syncNodeMarkers() {
@@ -312,12 +327,12 @@ function syncNodeMarkers() {
       popupContent.container
     );
     const marker = new maplibre.Marker({
-      color: desiredColor,
+      element: createNodeMarkerElement(desiredColor),
+      anchor: "center",
     })
       .setLngLat([coords.lng, coords.lat])
       .setPopup(popup)
       .addTo(mapInstance);
-    marker.getElement().dataset.color = desiredColor;
     nodePopups.set(row.id, { cleanup: popupContent.cleanup });
     nodeMarkers.set(row.id, marker);
   });

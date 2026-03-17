@@ -28,6 +28,7 @@ export type DeviceRow = {
   type?: string | null;
   status: DeviceRowStatus;
   registered?: boolean;
+  inside_map?: boolean | null;
   lastSeen?: string | null;
   devices?: ControllerState[] | null;
   connectedNodes?: string[] | null;
@@ -46,6 +47,7 @@ export type NodeInfo = {
   lng?: number | null;
   status?: string | null;
   registered?: boolean | null;
+  inside_map?: boolean | null;
   last_seen?: string | null;
   connected_nodes?: string[] | null;
   managed_areas?: { id: number; name: string }[] | null;

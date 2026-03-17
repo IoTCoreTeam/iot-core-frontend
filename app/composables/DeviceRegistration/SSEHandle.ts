@@ -21,6 +21,7 @@ export type NodeEventPayload = {
   gps?: { lat?: number | null; lng?: number | null; latitude?: number | null; longitude?: number | null } | null;
   status?: string | null;
   registered?: boolean | null;
+  inside_map?: boolean | null;
   lastSeen?: string | null;
   last_seen?: string | null;
   timestamp?: string | null;
@@ -157,6 +158,7 @@ function buildNodeRow(
     ),
     status: normalizeStatus(payload.status ?? existing?.status ?? null),
     registered: payload.registered ?? existing?.registered ?? false,
+    inside_map: payload.inside_map ?? existing?.inside_map ?? null,
     lastSeen: normalizeLastSeen(payload, existing),
     devices: payload.devices ?? existing?.devices ?? null,
     connectedNodes,
