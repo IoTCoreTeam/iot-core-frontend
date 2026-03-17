@@ -56,6 +56,7 @@
         <section class="grid min-h-[60vh] grid-cols-1 gap-4 xl:grid-cols-5 items-start min-h-0">
             <SingleMetricChart
               class="xl:col-span-2 h-full"
+              container-height="60vh"
               :series="chartSeries"
               :selected-metric-key="selectedMetricKey"
               :selected-timeframe="selectedTimeframe"

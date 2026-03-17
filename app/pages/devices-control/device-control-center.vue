@@ -44,19 +44,19 @@ const ACTIVE_SECTION_STORAGE_KEY = "device-registration-active-section";
 
 const sections: Section[] = [
   {
+    id: "device-control",
+    label: "Device Control",
+    icon: CpuChipIcon,
+  },
+  {
     id: "device-registration",
     label: "Devices Registration",
-    icon: CpuChipIcon,
+    icon: RectangleStackIcon,
   },
   {
     id: "map",
     label: "Map Configuration",
     icon: MapIcon,
-  },
-  {
-    id: "device-control",
-    label: "Device Control",
-    icon: RectangleStackIcon,
   },
   {
     id: "scenario",

@@ -94,9 +94,6 @@
             class="flex items-center justify-between border-b border-gray-200 pb-2"
           >
             <h4 class="text-xs font-semibold text-gray-700">Assigned Maps</h4>
-            <span class="text-[10px] uppercase tracking-wider text-gray-500">
-              {{ selectedMapIds.length }}
-            </span>
           </div>
           <div class="flex flex-col gap-3">
             <a-select
@@ -290,7 +287,7 @@ async function saveAssignedMaps() {
     message.success("Maps assigned successfully.");
   } catch (error) {
     console.error(error);
-    message.error("Failed to assign maps.");
+    message.error("Device must be registered first.");
   } finally {
     isSavingMaps.value = false;
   }

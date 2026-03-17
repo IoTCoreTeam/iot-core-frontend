@@ -1,6 +1,7 @@
 <template>
   <SingleMetricChart
     class="mb-4 w-full"
+    container-height="50vh"
     :selected-metric-key="selectedMetricKey"
     :selected-timeframe="selectedTimeframe"
     @update:selected-metric-key="handleMetricChange"
@@ -38,6 +39,7 @@
             Constants
           </button>
           <button
+            v-if="isCanvasDirty"
             type="button"
             class="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700"
             @click="saveFlow"
@@ -45,7 +47,7 @@
             <BootstrapIcon name="save" class="h-3 w-3" />
             Save
           </button>
-          <span class="text-xs text-gray-400" aria-hidden="true">|</span>
+          <span v-if="isCanvasDirty" class="text-xs text-gray-400" aria-hidden="true">|</span>
           <button
             v-if="isRunningFlow"
             type="button"
@@ -587,6 +589,15 @@ const conditionForm = ref({
 });
 const isMetricNodesLoading = ref(false);
 const lastActionInputKind = ref<string | null>(null);
+const isCanvasDirty = ref(false);
+
+function markCanvasAsDirty() {
+  isCanvasDirty.value = true;
+}
+
+function markCanvasAsSaved() {
+  isCanvasDirty.value = false;
+}
 
 function normalizeControlInputType(value?: string | null) {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -704,6 +715,7 @@ function handleDrop(event: DragEvent) {
       data: { label: buildNodeLabel(type), kind: type },
     },
   ]);
+  markCanvasAsDirty();
 }
 
 function handleConnect(connection: Connection) {
@@ -715,6 +727,7 @@ function handleConnect(connection: Connection) {
   }
   if (connectCheck.kind !== "condition") {
     addEdges([connection]);
+    markCanvasAsDirty();
     return;
   }
 
@@ -727,6 +740,7 @@ function handleConnect(connection: Connection) {
         data: { branch: nextBranch },
       },
     ]);
+    markCanvasAsDirty();
     return;
   }
 
@@ -744,6 +758,7 @@ function handleConnect(connection: Connection) {
           data: { branch: "true" },
         },
       ]);
+      markCanvasAsDirty();
     },
     onCancel: () => {
       addEdges([
@@ -753,16 +768,29 @@ function handleConnect(connection: Connection) {
           data: { branch: "false" },
         },
       ]);
+      markCanvasAsDirty();
     },
   });
 }
 
 function handleNodesChange(changes: NodeChange[]) {
+  const shouldMarkDirty = changes.some((change) =>
+    ["add", "remove", "position", "replace"].includes(change.type),
+  );
   nodes.value = applyNodeChanges(changes, nodes.value as any) as Node<NodeData>[];
+  if (shouldMarkDirty) {
+    markCanvasAsDirty();
+  }
 }
 
 function handleEdgesChange(changes: EdgeChange[]) {
+  const shouldMarkDirty = changes.some((change) =>
+    ["add", "remove", "replace", "update"].includes(change.type),
+  );
   edges.value = applyEdgeChanges(changes, edges.value as any) as Edge[];
+  if (shouldMarkDirty) {
+    markCanvasAsDirty();
+  }
 }
 
 function resetFlow() {
@@ -775,6 +803,7 @@ function resetFlow() {
     },
   ];
   edges.value = [];
+  markCanvasAsDirty();
 }
 
 function resetWorkflowSteps(options?: { abort?: boolean } | PointerEvent) {
@@ -845,6 +874,7 @@ function saveFlow() {
   }
   const controlDefinition = formatControlDefinition(nodes.value, edges.value);
   emit("save", { nodes: nodes.value, edges: edges.value, controlDefinition });
+  markCanvasAsSaved();
 }
 
 function ensureEndStep(status: WorkflowStepStatus = "finish") {
@@ -1303,6 +1333,7 @@ function applyDefinition(definition?: { nodes?: Node<NodeData>[]; edges?: Edge[]
       },
     ];
     edges.value = [];
+    markCanvasAsSaved();
     return;
   }
   nodes.value = definition.nodes.map((node) => ({
@@ -1313,6 +1344,7 @@ function applyDefinition(definition?: { nodes?: Node<NodeData>[]; edges?: Edge[]
     ? definition.edges.map((edge) => ({ ...edge }))
     : [];
   nodes.value.forEach((node) => updateNodeLabel(node));
+  markCanvasAsSaved();
 }
 
 function saveActionNode() {
@@ -1349,6 +1381,7 @@ function saveActionNode() {
     action_value: actionValue ?? undefined,
   };
   updateNodeLabel(target);
+  markCanvasAsDirty();
   isSavingNode.value = false;
   isActionModalOpen.value = false;
   activeNode.value = null;
@@ -1371,6 +1404,7 @@ function saveConditionNode() {
     value: Number(conditionForm.value.value ?? 0),
   };
   updateNodeLabel(target);
+  markCanvasAsDirty();
   isSavingNode.value = false;
   isConditionModalOpen.value = false;
   activeNode.value = null;
