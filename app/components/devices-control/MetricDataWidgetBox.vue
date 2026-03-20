@@ -81,11 +81,16 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { onBeforeUnmount, ref, watch } from "vue";
 import { apiConfig } from "~~/config/api";
 import { useMetrics } from "@/composables/useMetrics";
 import type { DashboardMetric } from "@/types/dashboard";
 import { formatIotDateTime } from "~~/config/iot-time-format";
+import {
+  normalizeSensorLatestRow,
+  normalizeSensorType,
+  type SensorQueryRow,
+} from "@/composables/metrics/sensorPayload";
 
 interface MetricWidgetItem {
   key: string;
@@ -109,11 +114,6 @@ const isLoading = ref(false);
 const isRefreshing = ref(false);
 const hasLoadedOnce = ref(false);
 
-const sensorTypeMapping: Record<string, string> = {
-  soilMoisture: "soil",
-  airHumidity: "humidity",
-};
-
 const formatTimestamp = (value?: string) => {
   return formatIotDateTime(value, {
     formatter: new Intl.DateTimeFormat("vi-VN", {
@@ -126,15 +126,6 @@ const formatTimestamp = (value?: string) => {
     }),
     fallback: "-",
   });
-};
-
-const toNumber = (v: any): number | null => {
-  if (v == null) return null;
-  if (typeof v === "object") {
-    return toNumber(v.$numberDecimal ?? v.$numberDouble ?? v.$numberLong ?? v.value);
-  }
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
 };
 
 const buildDefaultWidget = (metric: DashboardMetric): MetricWidgetItem => ({
@@ -154,12 +145,12 @@ const buildDefaultWidget = (metric: DashboardMetric): MetricWidgetItem => ({
   gatewayId: "-",
 });
 
-const { metrics, fetchMetrics } = useMetrics();
+const { metrics } = useMetrics();
 const widgets = ref<MetricWidgetItem[]>([]);
 
 const fetchLatestByMetric = async (metricKey: string) => {
   const params = new URLSearchParams();
-  const mappedType = sensorTypeMapping[metricKey] ?? metricKey;
+  const mappedType = normalizeSensorType(metricKey);
   params.set("sensor_type", mappedType);
   params.set("limit", "1");
   params.set("page", "1");
@@ -170,7 +161,7 @@ const fetchLatestByMetric = async (metricKey: string) => {
   }
   const data = await res.json();
   if (!Array.isArray(data) || data.length === 0) return null;
-  return data[0];
+  return data[0] as SensorQueryRow;
 };
 
 const loadLatestMetrics = async () => {
@@ -187,12 +178,8 @@ const loadLatestMetrics = async () => {
         const row = await fetchLatestByMetric(metric.key);
         if (!row) return buildDefaultWidget(metric);
 
-        const value = toNumber(row.value ?? row._id?.value);
-        const unit = row.unit ?? row._id?.unit ?? metric.unit ?? "";
-        const time = row.timestamp ?? row._id?.timestamp ?? "";
-        const sensorId = row.sensor_id ?? row._id?.sensor_id ?? "-";
-        const nodeId = row.node_id ?? row._id?.node_id ?? "-";
-        const gatewayId = row.gateway_id ?? row._id?.gateway_id ?? "-";
+        const normalized = normalizeSensorLatestRow(row);
+        const unit = normalized.unit || metric.unit || "";
 
         return {
           key: metric.key,
@@ -200,15 +187,15 @@ const loadLatestMetrics = async () => {
           subtitle: metric.subtitle,
           icon: metric.icon,
           unit,
-          value: value ?? row.value ?? "--",
+          value: normalized.value ?? normalized.rawValue ?? "--",
           change: null,
           min: metric.min,
           max: metric.max,
           trend: metric.trend,
-          timestamp: formatTimestamp(time),
-          sensorId,
-          nodeId,
-          gatewayId,
+          timestamp: formatTimestamp(normalized.timestamp),
+          sensorId: normalized.sensorId,
+          nodeId: normalized.nodeId,
+          gatewayId: normalized.gatewayId,
         } as MetricWidgetItem;
       })
     );
@@ -293,10 +280,6 @@ const startPolling = () => {
   if (pollingTimer) return;
   pollingTimer = setInterval(loadLatestMetrics, 10000);
 };
-
-onMounted(() => {
-  fetchMetrics();
-});
 
 watch(
   metrics,

@@ -3,6 +3,7 @@ import type { ControllerState, DeviceRow } from "@/types/devices-control";
 
 export type NodeEventPayload = {
   gateway_id?: string | null;
+  // Legacy aliases kept for backward compatibility.
   gatewayId?: string | null;
   external_id?: string | null;
   externalId?: string | null;
@@ -16,20 +17,15 @@ export type NodeEventPayload = {
   mac_address?: string | null;
   lat?: number | null;
   lng?: number | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  gps?: { lat?: number | null; lng?: number | null; latitude?: number | null; longitude?: number | null } | null;
+  gps?: { lat?: number | null; lng?: number | null } | null;
   status?: string | null;
   registered?: boolean | null;
   inside_map?: boolean | null;
-  lastSeen?: string | null;
   last_seen?: string | null;
-  timestamp?: string | null;
+  lastSeen?: string | null;
   gateway_timestamp?: string | null;
-  type?: string | null;
   node_type?: string | null;
-  role?: string | null;
-  category?: string | null;
+  type?: string | null;
   devices?: ControllerState[] | null;
   connected_nodes?: string[] | null;
   connectedNodes?: string[] | null;
@@ -42,6 +38,7 @@ export type GatewayEventPayload = {
   mac?: string | null;
   status?: string | null;
   registered?: boolean | null;
+  last_seen?: string | null;
   lastSeen?: string | null;
   nodes?: NodeEventPayload[] | null;
 };
@@ -72,6 +69,15 @@ function normalizeCoord(value?: unknown, min?: number, max?: number) {
   return num;
 }
 
+function pickFirst<T>(...values: Array<T | null | undefined>): T | null {
+  for (const value of values) {
+    if (value !== undefined && value !== null) {
+      return value;
+    }
+  }
+  return null;
+}
+
 function normalizeConnectedNodes(value?: unknown): string[] | null {
   if (!value) return null;
   if (Array.isArray(value)) {
@@ -84,38 +90,27 @@ function normalizeConnectedNodes(value?: unknown): string[] | null {
 function resolveNodeLocation(payload: NodeEventPayload, existing?: DeviceRow) {
   const lat =
     normalizeCoord(payload.lat, -90, 90) ??
-    normalizeCoord(payload.latitude, -90, 90) ??
     normalizeCoord(payload.gps?.lat, -90, 90) ??
-    normalizeCoord(payload.gps?.latitude, -90, 90) ??
     existing?.lat ??
     null;
   const lng =
     normalizeCoord(payload.lng, -180, 180) ??
-    normalizeCoord(payload.longitude, -180, 180) ??
     normalizeCoord(payload.gps?.lng, -180, 180) ??
-    normalizeCoord(payload.gps?.longitude, -180, 180) ??
     existing?.lng ??
     null;
   return { lat, lng };
 }
 
 function resolveNodeId(payload: NodeEventPayload): string | null {
-  return (
-    payload.id ??
-    payload.node_id ??
-    payload.nodeId ??
-    null
-  );
+  return pickFirst(payload.id, payload.node_id, payload.nodeId);
 }
 
 function normalizeLastSeen(payload: NodeEventPayload, existing?: DeviceRow) {
-  return (
-    payload.lastSeen ??
-    payload.last_seen ??
-    payload.timestamp ??
-    payload.gateway_timestamp ??
-    existing?.lastSeen ??
-    null
+  return pickFirst(
+    payload.last_seen,
+    payload.lastSeen,
+    payload.gateway_timestamp,
+    existing?.lastSeen,
   );
 }
 
@@ -125,36 +120,28 @@ function buildNodeRow(
   gatewayId?: string | null,
 ): DeviceRow {
   const id = resolveNodeId(payload) ?? existing?.id ?? "unknown-node";
-  const rawName = payload.name ?? existing?.name ?? null;
-  const externalId =
-    payload.external_id ??
-    payload.externalId ??
-    existing?.externalId ??
-    null;
+  const rawName = pickFirst(payload.name, existing?.name);
+  const externalId = pickFirst(
+    payload.external_id,
+    payload.externalId,
+    existing?.externalId,
+  );
   const location = resolveNodeLocation(payload, existing);
   const connectedNodes =
-    normalizeConnectedNodes(payload.connected_nodes ?? payload.connectedNodes) ??
+    normalizeConnectedNodes(pickFirst(payload.connected_nodes, payload.connectedNodes)) ??
     existing?.connectedNodes ??
     null;
   return {
     id,
     externalId,
     name: rawName ?? "N/A",
-    gatewayId:
-      payload.gateway_id ??
-      payload.gatewayId ??
-      gatewayId ??
-      existing?.gatewayId ??
-      null,
-    ip: payload.ip ?? payload.ip_address ?? existing?.ip ?? null,
-    mac: payload.mac ?? payload.mac_address ?? existing?.mac ?? null,
+    gatewayId: pickFirst(payload.gateway_id, payload.gatewayId, gatewayId, existing?.gatewayId),
+    ip: pickFirst(payload.ip, payload.ip_address, existing?.ip),
+    mac: pickFirst(payload.mac, payload.mac_address, existing?.mac),
     lat: location.lat,
     lng: location.lng,
     type: normalizeDeviceType(
-      payload.type ??
-        payload.node_type ??
-        existing?.type ??
-        null,
+      pickFirst(payload.node_type, payload.type, existing?.type),
     ),
     status: normalizeStatus(payload.status ?? existing?.status ?? null),
     registered: payload.registered ?? existing?.registered ?? false,

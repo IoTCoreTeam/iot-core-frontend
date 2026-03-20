@@ -180,7 +180,7 @@ defineProps<{
   section: Section;
 }>();
 
-const { metrics, fetchMetrics } = useMetrics();
+const { metrics } = useMetrics();
 const authStore = useAuthStore();
 const selectedMetricKey = ref<string>("");
 const selectedTimeframe = ref<TimeframeKey>("second");
@@ -520,7 +520,6 @@ async function handleStopScenario(row: WorkflowRow) {
 
 onMounted(() => {
   connectGatewaySse();
-  fetchMetrics();
   fetchScenarioRows();
   fetchControlUrls();
 });

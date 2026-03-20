@@ -53,7 +53,7 @@ export function useLoadDataRow(refs: DeviceRowRefs) {
       mac: payload.mac ?? existing?.mac ?? null,
       status: normalizeStatus(payload.status),
       registered: payload.registered ?? false,
-      lastSeen: payload.lastSeen ?? null,
+      lastSeen: payload.last_seen ?? payload.lastSeen ?? existing?.lastSeen ?? null,
     };
 
     gatewayCache.set(row.id, row);

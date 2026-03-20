@@ -131,7 +131,7 @@ const isDashboardLoading = computed(
 
 const automationBatches = ref<AutomationBatchItem[]>([]);
 
-const { metrics, fetchMetrics } = useMetrics();
+const { metrics } = useMetrics();
 const selectedMetricKey = ref<string>("");
 const selectedTimeframe = ref<TimeframeKey>("second");
 // const chartSeries = ref<SeriesPoint[]>([]); // handled in child or removed
@@ -183,10 +183,6 @@ onMounted(() => {
   if (authStore.accessToken) {
     fetchTypeDistribution();
   }
-});
-
-onMounted(() => {
-  fetchMetrics();
 });
 
 watch(

@@ -188,7 +188,7 @@
                             <button
                               v-if="
                                 (activeDeviceTab === 'gateways' ||
-                                  (activeDeviceTab === 'registed' &&
+                                  (activeDeviceTab === 'registered' &&
                                     row.resourceType === 'gateway')) &&
                                 !isUnactiveStatus(row.status)
                               "
@@ -203,7 +203,7 @@
                             <button
                               v-if="
                                 activeDeviceTab === 'nodes' ||
-                                (activeDeviceTab === 'registed' &&
+                                (activeDeviceTab === 'registered' &&
                                   row.resourceType === 'node')
                               "
                               type="button"
@@ -234,7 +234,7 @@
                             </button>
                             <template
                               v-if="
-                                activeDeviceTab !== 'registed' &&
+                                activeDeviceTab !== 'registered' &&
                                 row.registered === false
                               "
                             >
@@ -252,10 +252,10 @@
                                 @click.stop="handleNodeEnrollClick(row)"
                               >
                                 <BootstrapIcon name="plus-lg" class="w-3 h-3" />
-                                <span class="sr-only">Register</span>
+                                <span clascs="sr-only">Register</span>
                               </button>
                             </template>
-                            <template v-else-if="activeDeviceTab !== 'registed'">
+                            <template v-else-if="activeDeviceTab !== 'registered'">
                               <button
                                 type="button"
                                 class="w-8 h-8 inline-flex items-center justify-center rounded border border-red-200 text-red-600 hover:bg-red-50 cursor-pointer"
@@ -749,9 +749,9 @@ async function handleDeleteRegisteredDevice(row: DeviceRow) {
   const encodedId = encodeURIComponent(row.id);
   const endpoint =
     row.resourceType === "gateway"
-      ? `${base}/gateways/${encodedId}`
+      ? `${base}/gateways/${encodedId}/deactivate`
       : `${base}/nodes/${encodedId}/deactivate`;
-  const method = row.resourceType === "gateway" ? "DELETE" : "POST";
+  const method = "POST";
 
   setDeletingRegisteredDevice(row, true);
   try {
@@ -863,7 +863,7 @@ function handleReapprove(row: DeviceRow) {
 function openGatewayDetail(row: DeviceRow) {
   if (
     activeDeviceTab.value !== "gateways" &&
-    !(activeDeviceTab.value === "registed" && row.resourceType === "gateway")
+    !(activeDeviceTab.value === "registered" && row.resourceType === "gateway")
   ) {
     return;
   }
@@ -904,7 +904,7 @@ let deviceRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
 const deviceTabs = computed<DeviceTab[]>(() => [
   { key: "gateways", label: "Gateways", rows: gatewayRows.value },
   { key: "nodes", label: "Nodes", rows: nodeRows.value },
-  { key: "registed", label: "Registed Device", rows: registeredRows.value },
+  { key: "registered", label: "Registered Device", rows: registeredRows.value },
 ]);
 
 const defaultDeviceTab = computed(() => deviceTabs.value[0]!);
@@ -930,7 +930,7 @@ const nodeTableColumns: Array<{ key: string; label: string; width: string }> = [
   { key: "registered", label: "Registered", width: "auto" },
   { key: "actions", label: "Actions", width: "auto" },
 ];
-const registedDeviceTableColumns: Array<{
+const registeredDeviceTableColumns: Array<{
   key: string;
   label: string;
   width: string;
@@ -966,7 +966,7 @@ const {
 const deviceTableColumnDefinitions = computed(() => {
   if (activeDeviceTab.value === "gateways") return gatewayTableColumns;
   if (activeDeviceTab.value === "nodes") return nodeTableColumns;
-  return registedDeviceTableColumns;
+  return registeredDeviceTableColumns;
 });
 const deviceTableColumns = computed(() =>
   deviceTableColumnDefinitions.value.map((column) => column.label),
@@ -1008,7 +1008,7 @@ const displayedDeviceRows = computed<DeviceRow[]>(() => {
 const connectedGatewayNodes = computed<DeviceRow[]>(() => {
   if (!selectedGateway.value) return [];
   const sourceRows =
-    activeDeviceTab.value === "registed" ? registeredRows.value : nodeRows.value;
+    activeDeviceTab.value === "registered" ? registeredRows.value : nodeRows.value;
   return sourceRows.filter(
     (row) => row.resourceType !== "gateway",
   ).filter(
@@ -1028,7 +1028,7 @@ function resetDeviceFilters() {
 
 function refreshDevices() {
   if (isDeviceLoading.value) return;
-  if (activeDeviceTab.value === "registed") {
+  if (activeDeviceTab.value === "registered") {
     loadRegisteredDevices();
     return;
   }

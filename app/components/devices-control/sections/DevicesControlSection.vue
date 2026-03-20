@@ -12,7 +12,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { ref, watch } from "vue";
 import ControlWidgetBox from "@/components/devices-control/ControlWidgetBox.vue";
 import DevicesControlContentSection from "@/components/devices-control/layouts/DevicesControlContentSection.vue";
 import SingleMetricChart from "@/components/SingleMetricChart.vue";
@@ -24,17 +24,13 @@ defineProps<{
   section: Section;
 }>();
 
-const { metrics, fetchMetrics } = useMetrics();
+const { metrics } = useMetrics();
 const selectedMetricKey = ref<string>("");
 const selectedTimeframe = ref<TimeframeKey>("second");
 
 function handleMetricChange(value: string) {
   selectedMetricKey.value = value;
 }
-
-onMounted(() => {
-  fetchMetrics();
-});
 
 watch(
   metrics,

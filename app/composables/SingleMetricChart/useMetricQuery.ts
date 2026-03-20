@@ -1,17 +1,15 @@
 import { ref, watch } from "vue";
 import { apiConfig } from "~~/config/api";
 import type { TimeframeKey } from "@/types/dashboard";
+import {
+  normalizeSensorSeriesRows,
+  normalizeSensorType,
+  type SensorQueryRow,
+} from "@/composables/metrics/sensorPayload";
 
 const BASE_URL = (apiConfig.server || "").replace(/\/$/, "");
 const MAX_POINTS = 30;
 const UI_OFFSET_MS = 7 * 60 * 60 * 1000;
-
-const sensorTypeMapping: Record<string, string> = {
-  soilMoisture: "soil",
-  soil_moisture: "soil",
-  airHumidity: "humidity",
-  air_humidity: "humidity",
-};
 
 const timeFieldMap: Record<TimeframeKey, string> = {
   second: "sec",
@@ -26,22 +24,7 @@ interface UseMetricQueryProps {
   sensorIds?: string[];
   nodeIds?: string[];
   sensorType?: string;
-  deviceId?: string;
 }
-
-const toNumber = (v: any): number | null => {
-  if (v == null) return null;
-  if (typeof v === "object") {
-    return toNumber(
-      v.$numberDecimal ??
-      v.$numberDouble ??
-      v.$numberLong ??
-      v.value
-    );
-  }
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-};
 
 export function useMetricQuery(props: UseMetricQueryProps) {
   const fetchedSeries = ref<{ name: string; data: { x: number; y: number }[] }[]>([]);
@@ -50,14 +33,13 @@ export function useMetricQuery(props: UseMetricQueryProps) {
 
   const buildParams = () => {
     const params = new URLSearchParams();
-    const ids = props.sensorIds ?? (props.deviceId ? [props.deviceId] : []);
+    const ids = props.sensorIds ?? [];
     const nodeIds = props.nodeIds ?? [];
 
     params.set("time_field", timeFieldMap[props.selectedTimeframe]);
     params.set("limit", String(MAX_POINTS));
 
-    const typeKey = props.sensorType ?? props.selectedMetricKey;
-    const mappedType = sensorTypeMapping[typeKey] ?? typeKey;
+    const mappedType = normalizeSensorType(props.sensorType ?? props.selectedMetricKey);
     if (mappedType) params.set("sensor_type", mappedType);
 
     nodeIds.forEach(id => params.append("node_id", id));
@@ -66,35 +48,6 @@ export function useMetricQuery(props: UseMetricQueryProps) {
       params.set("latest_by_sensor", "1");
     }
     return params.toString();
-  };
-
-  const mapToSeries = (rows: any[]) => {
-    const map: Record<string, { x: number; y: number }[]> = {};
-
-    for (const r of rows) {
-      const value = toNumber(r.value ?? r._id?.value);
-      const time = r.timestamp ?? r._id?.timestamp;
-      if (value == null || !time) continue;
-
-      const name =
-        r.node_id ??
-        r._id?.node_id ??
-        r.sensorName ??
-        r._id?.sensorName ??
-        r.sensorId ??
-        "sensor";
-
-      map[name] ??= [];
-      map[name].push({
-        x: new Date(time).getTime() - UI_OFFSET_MS,
-        y: value,
-      });
-    }
-
-    fetchedSeries.value = Object.entries(map).map(([name, data]) => ({
-      name,
-      data: data.sort((a, b) => a.x - b.x).slice(-MAX_POINTS),
-    }));
   };
 
   const fetchOnce = async () => {
@@ -113,7 +66,12 @@ export function useMetricQuery(props: UseMetricQueryProps) {
         `${BASE_URL}/v1/sensors/query?${buildParams()}`
       );
       if (!res.ok) throw new Error("API error");
-      mapToSeries(await res.json());
+      const payload = await res.json();
+      const rows = Array.isArray(payload) ? (payload as SensorQueryRow[]) : [];
+      fetchedSeries.value = normalizeSensorSeriesRows(rows, {
+        maxPoints: MAX_POINTS,
+        uiOffsetMs: UI_OFFSET_MS,
+      });
     } catch (e: any) {
       fetchError.value = e.message;
       fetchedSeries.value = [];
@@ -129,7 +87,6 @@ export function useMetricQuery(props: UseMetricQueryProps) {
       props.sensorIds,
       props.nodeIds,
       props.sensorType,
-      props.deviceId,
     ],
     fetchOnce,
     { immediate: true }

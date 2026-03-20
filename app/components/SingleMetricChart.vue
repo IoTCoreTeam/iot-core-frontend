@@ -30,7 +30,7 @@
           <select
             :value="activeNodeId"
             @change="
-              updateNodeId(($event.target as HTMLSelectElement).value)
+              updateChartNodeId(($event.target as HTMLSelectElement).value)
             "
             class="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-800"
           >
@@ -83,12 +83,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, onBeforeUnmount, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref } from "vue";
 import LoadingState from "@/components/common/LoadingState.vue";
-import type { ApexOptions } from "apexcharts";
 import type { DashboardMetric, SeriesPoint, TimeframeKey } from "@/types/dashboard";
 import { useMetricQuery } from "@/composables/SingleMetricChart/useMetricQuery";
 import { useMetrics } from "@/composables/useMetrics";
+import { ALL_NODES_VALUE, useChartSeries } from "@/composables/SingleMetricChart/useChartSeries";
+import { useChartOptions } from "@/composables/SingleMetricChart/useChartOptions";
+import { useMetricSSE } from "@/composables/SingleMetricChart/useMetricSSE";
 
 const props = withDefaults(
   defineProps<{
@@ -98,11 +100,9 @@ const props = withDefaults(
     error?: string | null;
     selectedMetricKey: string;
     selectedTimeframe: TimeframeKey;
-    sensorIds?: string[]; // Updated prop
+    sensorIds?: string[];
     nodeIds?: string[];
-    sensorType?: string; // Updated prop
-    deviceId?: string; // Legacy
-    deviceType?: string; // Legacy
+    sensorType?: string;
     selectedNodeId?: string;
     containerHeight?: string;
   }>(),
@@ -126,8 +126,9 @@ const {
   fetchError,
   fetchOnce,
 } = metricQuery;
+useMetricSSE({ fetchOnce, pollIntervalMs: 5000 });
 
-const { metrics: metricsRef, fetchMetrics } = useMetrics();
+const { metrics: metricsRef } = useMetrics();
 
 const availableMetrics = computed(() => {
   if (props.metrics && props.metrics.length > 0) return props.metrics;
@@ -141,9 +142,6 @@ const selectedMetric = computed(() =>
   )
 );
 
-const ALL_NODES_VALUE = "__all__";
-const internalSelectedNodeId = ref("");
-
 const containerStyle = computed(() => ({
   height: props.containerHeight,
   minHeight: props.containerHeight,
@@ -155,7 +153,6 @@ function updateMetricKey(value: string) {
 }
 
 function updateNodeId(value: string) {
-  internalSelectedNodeId.value = value;
   emit("update:selectedNodeId", value);
 }
 
@@ -177,165 +174,29 @@ const displayLoading = computed(() => {
   );
 });
 const displayError = computed(() => props.error || fetchError.value);
-
-const displaySeries = computed(() => {
-  if (fetchedSeries.value.length > 0) return fetchedSeries.value;
-  const fallback = props.series || [];
-  if (fallback.length === 0) return [];
-  const base = Date.now();
-  return [
-    {
-      name: selectedMetric.value?.title ?? "Metric",
-      data: fallback.map((p, index) => ({
-        x: base - (fallback.length - 1 - index) * 60_000,
-        y: p.value,
-      })),
-    },
-  ];
-});
-
-const MAX_DISPLAY_POINTS = 20;
-const GAP_THRESHOLD_MS = 12 * 60 * 60 * 1000;
-
-const trimSeriesData = (data: { x: number; y: number }[]) => {
-  if (!data.length) return data;
-  const sorted = [...data].sort((a, b) => a.x - b.x);
-  let startIndex = 0;
-  for (let i = sorted.length - 1; i > 0; i -= 1) {
-    const current = sorted[i];
-    const previous = sorted[i - 1];
-    if (!current || !previous) continue;
-    if (current.x - previous.x > GAP_THRESHOLD_MS) {
-      startIndex = i;
-      break;
-    }
-  }
-  const sliced = sorted.slice(startIndex);
-  if (sliced.length <= MAX_DISPLAY_POINTS) return sliced;
-  return sliced.slice(-MAX_DISPLAY_POINTS);
-};
-
-const limitedSeries = computed(() =>
-  displaySeries.value.map((series) => ({
-    ...series,
-    data: trimSeriesData(series.data),
-  }))
-);
-
-const nodeSelectOptions = computed(() => {
-  const source = props.nodeIds && props.nodeIds.length > 0
-    ? props.nodeIds
-    : limitedSeries.value.map((series) => series.name);
-  return Array.from(new Set(source.filter((value) => value && value.trim())));
-});
-
-const activeNodeId = computed(() => {
-  return props.selectedNodeId ?? internalSelectedNodeId.value;
-});
-
-const activeSeries = computed(() => {
-  if (!activeNodeId.value || activeNodeId.value === ALL_NODES_VALUE) {
-    return limitedSeries.value;
-  }
-  return limitedSeries.value.filter((series) => series.name === activeNodeId.value);
-});
-
-const allValues = computed(() => {
-  return activeSeries.value.flatMap((s) => s.data.map((p: any) => p.y));
-});
-
-const seriesExtent = computed(() => {
-  if (!allValues.value.length) return { min: 0, max: 1 };
-  const values = allValues.value;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  if (min === max) {
-    return { min: min - 1, max: max + 1 };
-  }
-  return { min, max };
+const {
+  activeNodeId,
+  activeSeries,
+  allValues,
+  seriesExtent,
+  nodeSelectOptions,
+  updateNodeId: updateChartNodeId,
+} = useChartSeries({
+  fetchedSeries,
+  fallbackSeries: computed(() => props.series || []),
+  selectedMetric,
+  nodeIds: computed(() => props.nodeIds),
+  selectedNodeId: computed(() => props.selectedNodeId),
+  onNodeIdChange: updateNodeId,
 });
 
 const chartSeries = computed(() => activeSeries.value);
-const seriesColors = computed(() => {
-  const palette = [
-    "#2563eb",
-    "#0ea5e9",
-    "#06b6d4",
-    "#14b8a6",
-    "#22c55e",
-    "#38bdf8",
-    "#60a5fa",
-    "#7dd3fc",
-    "#5eead4",
-    "#34d399",
-  ];
-  return activeSeries.value.map((_, index) => palette[index % palette.length]);
-});
-
-const chartOptions = computed<ApexOptions>(() => {
-  return {
-    chart: {
-      id: `parameter-trend-${props.selectedTimeframe}`,
-      height: "100%",
-      type: "line",
-      stacked: false,
-      toolbar: { show: false },
-      animations: {
-        enabled: true,
-        easing: "linear",
-        speed: 300,
-        dynamicAnimation: { speed: 300 },
-      },
-      fontFamily:
-        "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
-    },
-    dataLabels: { enabled: false },
-    stroke: { curve: "smooth" as const, width: 3 },
-    fill: { opacity: 1 },
-    markers: {
-      size: 4,
-      strokeWidth: 2,
-      strokeColors: "#ffffff",
-      hover: { size: 6 },
-    },
-    xaxis: {
-      type: "datetime",
-      labels: {
-        datetimeUTC: false,
-        datetimeFormatter: {
-          year: "yyyy",
-          month: "dd MMM",
-          day: "dd MMM",
-          hour: "HH:mm:ss",
-          minute: "HH:mm:ss",
-          second: "HH:mm:ss",
-        },
-        style: { fontSize: "11px", colors: "#6b7280" },
-      },
-      axisBorder: { color: "#e5e7eb" },
-      axisTicks: { color: "#e5e7eb" },
-    },
-    yaxis: {
-      min: seriesExtent.value.min,
-      max: seriesExtent.value.max,
-      labels: {
-        style: { fontSize: "11px", colors: "#6b7280" },
-        formatter: (val: number) => val.toFixed(3),
-      },
-    },
-    grid: {
-      strokeDashArray: 3,
-      borderColor: "#e5e7eb",
-    },
-    colors: seriesColors.value,
-    tooltip: {
-      x: { format: "dd MMM yyyy HH:mm" },
-      y: {
-        formatter: (val: number) =>
-          `${formatValue(val)}${selectedMetric.value?.unit ? ` ${selectedMetric.value.unit}` : ""}`,
-      },
-    },
-  };
+const { chartOptions } = useChartOptions({
+  selectedTimeframe: computed(() => props.selectedTimeframe),
+  seriesExtent,
+  activeSeriesCount: computed(() => activeSeries.value.length),
+  selectedUnit: computed(() => selectedMetric.value?.unit),
+  formatValue,
 });
 
 const selectedSeriesMinLabel = computed(() => {
@@ -353,44 +214,13 @@ const selectedSeriesMaxLabel = computed(() => {
 });
 
 onMounted(() => {
-  fetchMetrics();
   setTimeout(() => {
     initialLoading.value = false;
   }, 5000);
 });
 
-watch(
-  [nodeSelectOptions, activeNodeId],
-  ([options, current]) => {
-    if (!current) {
-      updateNodeId(ALL_NODES_VALUE);
-      return;
-    }
-    if (current === ALL_NODES_VALUE) return;
-    if (!options.length) {
-      updateNodeId(ALL_NODES_VALUE);
-      return;
-    }
-    if (!options.includes(current)) {
-      updateNodeId(ALL_NODES_VALUE);
-    }
-  },
-  { immediate: true }
-);
-
-let pollingTimer: ReturnType<typeof setInterval> | null = null;
-
 onMounted(() => {
-  pollingTimer = setInterval(() => {
-    fetchOnce();
-  }, 5000);
-});
-
-onBeforeUnmount(() => {
-  if (pollingTimer) {
-    clearInterval(pollingTimer);
-    pollingTimer = null;
-  }
+  updateChartNodeId(props.selectedNodeId ?? ALL_NODES_VALUE);
 });
 
 </script>
