@@ -54,7 +54,7 @@ async function fetchMetrics(force = false) {
 export function useMetrics() {
   const { metrics, isLoading, error, hasLoaded } = getMetricsState();
 
-  if (process.client && !hasLoaded.value && !isLoading.value) {
+  if (import.meta.client && !hasLoaded.value && !isLoading.value) {
     fetchMetrics();
   }
 

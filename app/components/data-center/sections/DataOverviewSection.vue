@@ -38,26 +38,6 @@
           </article>
         </div>
 
-        <article class="bg-white border border-slate-200 rounded p-4 animate-pulse">
-          <div class="h-4 w-56 rounded bg-slate-200"></div>
-          <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div class="rounded-md border border-slate-100 bg-slate-50 p-3">
-              <div class="h-3 w-20 rounded bg-slate-200"></div>
-              <div class="mt-3 grid grid-cols-2 gap-3">
-                <div class="h-16 rounded bg-slate-200"></div>
-                <div class="h-16 rounded bg-blue-100"></div>
-              </div>
-            </div>
-            <div class="rounded-md border border-slate-100 bg-slate-50 p-3">
-              <div class="h-3 w-16 rounded bg-slate-200"></div>
-              <div class="mt-3 grid grid-cols-2 gap-3">
-                <div class="h-16 rounded bg-slate-200"></div>
-                <div class="h-16 rounded bg-blue-100"></div>
-              </div>
-            </div>
-          </div>
-        </article>
-
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <article class="min-h-[360px] bg-white border border-slate-200 rounded p-4 animate-pulse">
             <div class="h-4 w-28 rounded bg-slate-200"></div>
@@ -80,12 +60,6 @@
           :totals="controlAckTotals"
         />
 
-        <DeviceRegistryCard
-          :gateway-registered-count="gatewayRegisteredCount"
-          :gateway-active-count="gatewayActiveCount"
-          :node-registered-count="nodeRegisteredCount"
-          :node-active-count="nodeActiveCount"
-        />
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <UsersByRoleCard :user-role-counts="userRoleCounts" />
           <LogsMonitoringCard
@@ -99,15 +73,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { apiConfig } from "~~/config/api";
 import { useAuthStore } from "~~/stores/auth";
-import { useMapSectionActiveDevices } from "@/composables/MapSection/useMapSectionActiveDevices";
+import { useControlAckApi } from "@/composables/ControlAck/useControlAckApi";
 import MetricDataWidgetBox from "@/components/devices-control/MetricDataWidgetBox.vue";
-import DeviceRegistryCard from "./data-overview/DeviceRegistryCard.vue";
 import UsersByRoleCard from "./data-overview/UsersByRoleCard.vue";
 import LogsMonitoringCard from "./data-overview/LogsMonitoringCard.vue";
 import ControlAckChartsPanel from "./data-overview/ControlAckChartsPanel.vue";
+import {
+  DEFAULT_CONTROL_ACK_BUCKET,
+  DEFAULT_CONTROL_ACK_TOTALS,
+  type ControlAckBucket,
+  type ControlAckTotals,
+} from "@/types/control-ack";
 const authStore = useAuthStore();
 
 const gatewayRegisteredCount = ref(0);
@@ -123,36 +102,10 @@ const userRoleCounts = ref({
 
 const logsCategories = ref<string[]>([]);
 const logsSeries = ref<{ name: string; data: number[] }[]>([]);
-const controlAckBucket = ref<"hour" | "minute">("hour");
-const controlAckBuckets = ref<
-  {
-    bucket: string;
-    on: number;
-    off: number;
-    success: number;
-    failed: number;
-    timeout: number;
-    unknown: number;
-    avg_latency_ms: number | null;
-    p95_latency_ms: number | null;
-  }[]
->([]);
-const controlAckTotals = ref({
-  success: 0,
-  failed: 0,
-  timeout: 0,
-  total: 0,
-});
-
-const { gatewayRows, nodeRows } = useMapSectionActiveDevices();
-
-const gatewayActiveCount = computed(
-  () => gatewayRows.value.filter((item) => item.status === "online").length,
-);
-
-const nodeActiveCount = computed(
-  () => nodeRows.value.filter((item) => item.status === "online").length,
-);
+const controlAckBucket = ref<"hour" | "minute">(DEFAULT_CONTROL_ACK_BUCKET);
+const controlAckBuckets = ref<ControlAckBucket[]>([]);
+const controlAckTotals = ref<ControlAckTotals>({ ...DEFAULT_CONTROL_ACK_TOTALS });
+const controlAckApi = useControlAckApi(apiConfig.server || "");
 
 async function fetchJson(url: string) {
   const authorization = authStore.authorizationHeader;
@@ -172,23 +125,6 @@ async function fetchJson(url: string) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(payload?.message ?? `Request failed: ${response.status}`);
-  }
-
-  return payload;
-}
-
-async function fetchPublicJson(url: string) {
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload?.message ?? payload?.error ?? `Request failed: ${response.status}`);
   }
 
   return payload;
@@ -225,34 +161,15 @@ async function fetchOverviewData() {
     logsSeries.value = Array.isArray(logs?.series) ? logs.series : [];
 
     try {
-      const controlAckOverview = await fetchPublicJson(
-        `${apiConfig.server}/v1/control-acks/overview?hours=24&bucket=hour`,
-      );
-
-      controlAckBucket.value =
-        controlAckOverview?.bucket === "minute" ? "minute" : "hour";
-
-      controlAckBuckets.value = Array.isArray(controlAckOverview?.buckets)
-        ? controlAckOverview.buckets
-        : [];
-
-      const totals = controlAckOverview?.totals ?? {};
-      controlAckTotals.value = {
-        success: Number(totals?.success ?? 0),
-        failed: Number(totals?.failed ?? 0),
-        timeout: Number(totals?.timeout ?? 0),
-        total: Number(totals?.total ?? 0),
-      };
+      const overview = await controlAckApi.fetchOverview(12, "hour");
+      controlAckBucket.value = overview.bucket;
+      controlAckBuckets.value = overview.buckets;
+      controlAckTotals.value = overview.totals;
     } catch (error) {
       console.error("Failed to fetch control ack overview:", error);
-      controlAckBucket.value = "hour";
+      controlAckBucket.value = DEFAULT_CONTROL_ACK_BUCKET;
       controlAckBuckets.value = [];
-      controlAckTotals.value = {
-        success: 0,
-        failed: 0,
-        timeout: 0,
-        total: 0,
-      };
+      controlAckTotals.value = { ...DEFAULT_CONTROL_ACK_TOTALS };
     }
   } catch (error) {
     console.error("Failed to fetch data overview:", error);

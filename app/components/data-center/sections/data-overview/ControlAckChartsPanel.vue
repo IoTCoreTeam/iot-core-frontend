@@ -26,7 +26,7 @@
       <div class="mt-4 h-[230px]">
         <ClientOnly>
           <ApexChart
-            type="line"
+            type="bar"
             height="100%"
             width="100%"
             :options="latencyOptions"
@@ -59,32 +59,14 @@
 <script setup lang="ts">
 import type { ApexOptions } from "apexcharts";
 import { computed, defineAsyncComponent, toRefs } from "vue";
+import type { ControlAckBucket, ControlAckTotals } from "@/types/control-ack";
 
 const ApexChart = defineAsyncComponent(() => import("vue3-apexcharts"));
 
-type AckBucket = {
-  bucket: string;
-  on: number;
-  off: number;
-  success: number;
-  failed: number;
-  timeout: number;
-  unknown: number;
-  avg_latency_ms: number | null;
-  p95_latency_ms: number | null;
-};
-
-type AckTotals = {
-  success: number;
-  failed: number;
-  timeout: number;
-  total: number;
-};
-
 const props = defineProps<{
   bucket: "hour" | "minute";
-  buckets: AckBucket[];
-  totals: AckTotals;
+  buckets: ControlAckBucket[];
+  totals: ControlAckTotals;
 }>();
 
 const { bucket, buckets, totals } = toRefs(props);
@@ -161,18 +143,17 @@ const latencySeries = computed(() => [
 
 const latencyOptions = computed<ApexOptions>(() => ({
   chart: {
-    type: "line",
+    type: "bar",
     toolbar: { show: false },
     fontFamily: "inherit",
     foreColor: "#64748b",
   },
   colors: ["#2563eb", "#1d4ed8"],
-  stroke: {
-    width: [2.5, 2.5],
-    curve: "smooth",
-  },
-  markers: {
-    size: 0,
+  plotOptions: {
+    bar: {
+      columnWidth: "42%",
+      borderRadius: 2,
+    },
   },
   xaxis: {
     categories: categories.value,

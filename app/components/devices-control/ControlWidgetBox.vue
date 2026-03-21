@@ -24,7 +24,7 @@
             type="button"
             class="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-slate-700"
             aria-label="Details"
-            @click="openDetail(widget)"
+            @click.prevent.stop="openDetail(widget)"
           >
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="9" />
@@ -95,7 +95,7 @@
                 : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 focus:ring-slate-300'"
               :aria-pressed="isWidgetOn(widget)"
               :disabled="!canExecute(widget) || isExecuting(widget.id)"
-              @click="toggleWidget(widget)"
+              @click.prevent.stop="toggleWidget(widget)"
             >
               <span
                 class="inline-block h-2 w-2 rounded-full"
@@ -130,7 +130,7 @@
                 type="button"
                 class="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
                 :disabled="isExecuting(widget.id) || !canExecuteAnalog(widget)"
-                @click="applyAnalog(widget)"
+                @click.prevent.stop="applyAnalog(widget)"
               >
                 Set
               </button>

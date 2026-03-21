@@ -6,11 +6,16 @@
         :buckets="controlAckBuckets"
         :totals="controlAckTotals"
       />
+      <ControlAckKpiStrip
+        :totals="controlAckTotals"
+        :buckets="controlAckBuckets"
+        :rows="rows"
+      />
 
       <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
       <div
         :class="[
-          'bg-white rounded border border-slate-200 overflow-hidden w-full lg:w-64 shrink-0 h-fit lg:sticky lg:top-4',
+          'bg-white rounded border border-slate-200 overflow-hidden w-full lg:w-[24%] lg:max-w-[24%] shrink-0 h-fit lg:sticky lg:top-4',
           { hidden: !isFilterVisible },
         ]"
       >
@@ -42,7 +47,7 @@
       <div
         :class="[
           'flex flex-col gap-4',
-          isFilterVisible ? 'flex-1' : 'max-w-8xl w-full mx-auto',
+          isFilterVisible ? 'w-full lg:w-[76%]' : 'w-full',
         ]"
       >
         <DataBoxCard
@@ -104,6 +109,7 @@
                 :key="column"
                 :class="[
                   'px-2 py-2 font-normal text-gray-600 text-center align-middle leading-4',
+                  columnWidthClasses[column] ?? '',
                   leftAlignedColumns.has(column) ? 'text-left' : '',
                 ]"
               >
@@ -116,16 +122,18 @@
             <tr
               v-for="row in displayedRows"
               :key="rowKey(row)"
-              class="hover:bg-gray-50 transition-colors text-xs align-top border-b border-gray-100 py-1 text-center"
+              class="hover:bg-gray-50 transition-colors text-xs align-top border-b border-gray-100 py-1 text-center cursor-pointer"
+              @click="openTraceDrawer(row)"
             >
-              <td class="px-2 py-2 text-gray-700 text-left align-middle leading-4">{{ row.gateway_id || "-" }}</td>
-              <td class="px-2 py-2 text-gray-700 text-left align-middle leading-4">{{ row.node_id || "-" }}</td>
-              <td class="px-2 py-2 text-gray-700 text-left align-middle leading-4">{{ row.device || "-" }}</td>
-              <td class="px-2 py-2 text-gray-700 align-middle leading-4">{{ row.state || "-" }}</td>
-              <td class="px-2 py-2 text-gray-700 align-middle leading-4">{{ row.status || "-" }}</td>
-              <td class="px-2 py-2 text-gray-700 text-left align-middle leading-4">{{ row.topic || "-" }}</td>
-              <td class="px-2 py-2 text-gray-700 text-left align-middle leading-4">{{ formatDateTime(row.timestamp) }}</td>
-              <td class="px-2 py-2 text-gray-700 text-left align-middle leading-4">{{ formatDateTime(row.received_at) }}</td>
+              <td class="w-[10%] px-2 py-2 text-gray-700 text-left align-middle leading-4">{{ row.gateway_id || "-" }}</td>
+              <td class="w-[12%] px-2 py-2 text-gray-700 text-left align-middle leading-4">{{ row.node_id || "-" }}</td>
+              <td class="w-[10%] px-2 py-2 text-gray-700 text-left align-middle leading-4">{{ row.device || "-" }}</td>
+              <td class="w-[8%] px-2 py-2 text-gray-700 align-middle leading-4">{{ row.state || "-" }}</td>
+              <td class="w-[8%] px-2 py-2 text-gray-700 align-middle leading-4">{{ row.status || "-" }}</td>
+              <td class="w-[16%] px-2 py-2 text-gray-700 text-left align-middle leading-4 break-words">{{ row.topic || "-" }}</td>
+              <td class="w-[8%] px-2 py-2 text-gray-700 align-middle leading-4">{{ formatExecMs(row.command_exec_ms) }}</td>
+              <td class="w-[14%] px-2 py-2 text-gray-700 text-left align-middle leading-4">{{ formatDateTime(row.timestamp) }}</td>
+              <td class="w-[14%] px-2 py-2 text-gray-700 text-left align-middle leading-4">{{ formatDateTime(row.received_at) }}</td>
             </tr>
           </template>
 
@@ -140,6 +148,11 @@
         </DataBoxCard>
       </div>
     </div>
+    <ControlCommandTraceDrawer
+      :open="isTraceDrawerOpen"
+      :row="selectedTraceRow"
+      @close="closeTraceDrawer"
+    />
     </div>
   </section>
 </template>
@@ -148,34 +161,23 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { apiConfig } from "~~/config/api";
 import { formatIotDateTime } from "~~/config/iot-time-format";
+import { useControlAckApi } from "@/composables/ControlAck/useControlAckApi";
 import ControlAckChartsPanel from "@/components/data-center/sections/data-overview/ControlAckChartsPanel.vue";
+import ControlAckKpiStrip from "@/components/devices-control/sections/ControlAckKpiStrip.vue";
+import ControlCommandTraceDrawer from "@/components/devices-control/sections/ControlCommandTraceDrawer.vue";
 import AdvancedFilterPanel, {
   type FilterFieldRow,
 } from "@/components/common/AdvancedFilterPanel.vue";
 import DataBoxCard from "@/components/common/DataBoxCard.vue";
-
-type ControlLogRow = {
-  _id?: { $oid?: string } | string | null;
-  gateway_id?: string | null;
-  node_id?: string | null;
-  device?: string | null;
-  state?: string | null;
-  status?: string | null;
-  topic?: string | null;
-  timestamp?: string | null;
-  received_at?: string | null;
-};
-
-type FilterState = {
-  gateway_id: string;
-  node_id: string;
-  device: string;
-  state: string;
-  status: string;
-  topic: string;
-  timestamp_from: string;
-  timestamp_to: string;
-};
+import {
+  DEFAULT_CONTROL_ACK_BUCKET,
+  DEFAULT_CONTROL_ACK_TOPIC,
+  DEFAULT_CONTROL_ACK_TOTALS,
+  type ControlAckBucket,
+  type ControlAckTotals,
+  type ControlLogFilterState,
+  type ControlLogRow,
+} from "@/types/control-ack";
 
 defineProps<{
   section?: { id: string; label: string };
@@ -190,6 +192,7 @@ const tableColumns = [
   "State",
   "Status",
   "Topic",
+  "Exec (ms)",
   "Timestamp",
   "Received At",
 ];
@@ -200,6 +203,7 @@ const leftAlignedColumns = new Set([
   "Topic",
   "Timestamp",
   "Received At",
+  "Exec (ms)",
 ]);
 
 const rows = ref<ControlLogRow[]>([]);
@@ -207,46 +211,43 @@ const searchKeyword = ref("");
 const isLoading = ref(false);
 const isFilterVisible = ref(true);
 const pagination = ref({ page: 1, perPage: 20, lastPage: 1, total: 0 });
-const controlAckBucket = ref<"hour" | "minute">("hour");
-const controlAckBuckets = ref<
-  {
-    bucket: string;
-    on: number;
-    off: number;
-    success: number;
-    failed: number;
-    timeout: number;
-    unknown: number;
-    avg_latency_ms: number | null;
-    p95_latency_ms: number | null;
-  }[]
->([]);
-const controlAckTotals = ref({
-  success: 0,
-  failed: 0,
-  timeout: 0,
-  total: 0,
-});
+const controlAckBucket = ref<"hour" | "minute">(DEFAULT_CONTROL_ACK_BUCKET);
+const controlAckBuckets = ref<ControlAckBucket[]>([]);
+const controlAckTotals = ref<ControlAckTotals>({ ...DEFAULT_CONTROL_ACK_TOTALS });
+const controlAckApi = useControlAckApi(SERVER_BASE_URL);
+const isTraceDrawerOpen = ref(false);
+const selectedTraceRow = ref<ControlLogRow | null>(null);
+const columnWidthClasses: Record<string, string> = {
+  Gateway: "w-[10%]",
+  Node: "w-[12%]",
+  Device: "w-[10%]",
+  State: "w-[8%]",
+  Status: "w-[8%]",
+  Topic: "w-[16%]",
+  "Exec (ms)": "w-[8%]",
+  Timestamp: "w-[14%]",
+  "Received At": "w-[14%]",
+};
 
-const filters = reactive<FilterState>({
+const filters = reactive<ControlLogFilterState>({
   gateway_id: "",
   node_id: "",
   device: "",
   state: "",
   status: "",
-  topic: "",
+  topic: DEFAULT_CONTROL_ACK_TOPIC,
   timestamp_from: "",
   timestamp_to: "",
 });
-const appliedFilters = ref<FilterState>({ ...filters });
+const appliedFilters = ref<ControlLogFilterState>({ ...filters });
 
 const filterFields = computed<FilterFieldRow[]>(() => [
   [{ key: "gateway_id", label: "Gateway ID", type: "text", placeholder: "GW_001" }],
   [{ key: "node_id", label: "Node ID", type: "text", placeholder: "node-control-001" }],
   [{ key: "device", label: "Device", type: "text", placeholder: "pump" }],
   [{ key: "state", label: "State", type: "text", placeholder: "on/off" }],
-  [{ key: "status", label: "Status", type: "text", placeholder: "dispatched" }],
-  [{ key: "topic", label: "Topic", type: "text", placeholder: "esp32/control/ack" }],
+  [{ key: "status", label: "Status", type: "text", placeholder: "applied" }],
+  [{ key: "topic", label: "Topic", type: "text", placeholder: DEFAULT_CONTROL_ACK_TOPIC }],
   [
     { key: "timestamp_from", label: "Timestamp from", type: "datetime-local" },
     { key: "timestamp_to", label: "Timestamp to", type: "datetime-local" },
@@ -295,6 +296,7 @@ const filteredRows = computed(() => {
         row.state,
         row.status,
         row.topic,
+        row.command_exec_ms,
         row.timestamp,
         row.received_at,
       ]
@@ -336,6 +338,11 @@ function formatDateTime(value?: string | null) {
   return formatIotDateTime(value, { fallback: "-" });
 }
 
+function formatExecMs(value?: number | null) {
+  if (!Number.isFinite(Number(value))) return "-";
+  return `${Math.round(Number(value))}`;
+}
+
 function rowKey(row: ControlLogRow) {
   const objectId =
     typeof row._id === "string"
@@ -363,12 +370,22 @@ function resetFilters() {
   filters.device = "";
   filters.state = "";
   filters.status = "";
-  filters.topic = "";
+  filters.topic = DEFAULT_CONTROL_ACK_TOPIC;
   filters.timestamp_from = "";
   filters.timestamp_to = "";
   appliedFilters.value = { ...filters };
   pagination.value.page = 1;
   fetchRows();
+}
+
+function openTraceDrawer(row: ControlLogRow) {
+  selectedTraceRow.value = row;
+  isTraceDrawerOpen.value = true;
+}
+
+function closeTraceDrawer() {
+  isTraceDrawerOpen.value = false;
+  selectedTraceRow.value = null;
 }
 
 function toggleFilters() {
@@ -408,39 +425,9 @@ function recalculatePagination() {
 }
 
 async function fetchRows() {
-  if (!import.meta.client || !SERVER_BASE_URL) return;
-
   isLoading.value = true;
   try {
-    const params = new URLSearchParams();
-    params.set("limit", "500");
-    params.set("page", "1");
-
-    if (appliedFilters.value.gateway_id) params.set("gateway_id", appliedFilters.value.gateway_id);
-    if (appliedFilters.value.node_id) params.set("node_id", appliedFilters.value.node_id);
-    if (appliedFilters.value.device) params.set("device", appliedFilters.value.device);
-    if (appliedFilters.value.state) params.set("state", appliedFilters.value.state);
-    if (appliedFilters.value.status) params.set("status", appliedFilters.value.status);
-    if (appliedFilters.value.topic) params.set("topic", appliedFilters.value.topic);
-
-    const fromIso = fromLocalInputToIso(appliedFilters.value.timestamp_from);
-    const toIso = fromLocalInputToIso(appliedFilters.value.timestamp_to);
-    if (fromIso) params.set("timestamp_from", fromIso);
-    if (toIso) params.set("timestamp_to", toIso);
-
-    const response = await fetch(`${SERVER_BASE_URL}/v1/control-acks/query?${params.toString()}`, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    const payload = await response.json().catch(() => []);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch control logs (${response.status}).`);
-    }
-
-    rows.value = Array.isArray(payload) ? (payload as ControlLogRow[]) : [];
+    rows.value = await controlAckApi.fetchRows(appliedFilters.value, 500, 1);
     recalculatePagination();
   } catch (error) {
     console.error("Failed to fetch control logs:", error);
@@ -452,57 +439,16 @@ async function fetchRows() {
 }
 
 async function fetchControlAckOverview() {
-  if (!import.meta.client || !SERVER_BASE_URL) return;
   try {
-    const response = await fetch(
-      `${SERVER_BASE_URL}/v1/control-acks/overview?hours=24&bucket=hour`,
-      {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-        },
-      },
-    );
-
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(
-        (payload as { message?: string; error?: string })?.message ??
-          (payload as { message?: string; error?: string })?.error ??
-          `Failed to fetch control ACK overview (${response.status}).`,
-      );
-    }
-
-    const controlAckOverview = payload as {
-      bucket?: string;
-      buckets?: typeof controlAckBuckets.value;
-      totals?: Partial<typeof controlAckTotals.value>;
-    };
-
-    controlAckBucket.value =
-      controlAckOverview?.bucket === "minute" ? "minute" : "hour";
-
-    controlAckBuckets.value = Array.isArray(controlAckOverview?.buckets)
-      ? controlAckOverview.buckets
-      : [];
-
-    const totals = controlAckOverview?.totals ?? {};
-    controlAckTotals.value = {
-      success: Number(totals?.success ?? 0),
-      failed: Number(totals?.failed ?? 0),
-      timeout: Number(totals?.timeout ?? 0),
-      total: Number(totals?.total ?? 0),
-    };
+    const overview = await controlAckApi.fetchOverview(12, "hour");
+    controlAckBucket.value = overview.bucket;
+    controlAckBuckets.value = overview.buckets;
+    controlAckTotals.value = overview.totals;
   } catch (error) {
     console.error("Failed to fetch control ACK overview:", error);
-    controlAckBucket.value = "hour";
+    controlAckBucket.value = DEFAULT_CONTROL_ACK_BUCKET;
     controlAckBuckets.value = [];
-    controlAckTotals.value = {
-      success: 0,
-      failed: 0,
-      timeout: 0,
-      total: 0,
-    };
+    controlAckTotals.value = { ...DEFAULT_CONTROL_ACK_TOTALS };
   }
 }
 
