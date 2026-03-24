@@ -101,7 +101,12 @@ export function useDeviceFilter() {
       if (keyword) {
         const haystack = [
           row.id,
+          row.externalId,
           row.name,
+          row.controllerId,
+          row.url,
+          row.inputType,
+          row.gatewayId,
           row.ip,
           row.mac,
           row.status,

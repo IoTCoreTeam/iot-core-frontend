@@ -37,7 +37,7 @@
 
       <DataBoxCard
         :class="[
-          'lg:self-start',
+          'lg:self-start min-w-0',
           isFilterVisible ? 'flex-1' : 'max-w-7xl w-full mx-auto',
         ]"
         :is-loading="isLoading"
@@ -159,14 +159,14 @@
               </div>
             </td>
             <td
-              class="px-2 py-1 text-gray-700 leading-5 wrap-break-words align-top"
+              class="px-2 py-1 text-gray-700 leading-5 break-words align-top"
             >
               <p class="text-xs text-gray-800 leading-5">
                 {{ log.message }}
               </p>
               <p
                 v-if="metadataPreview(log.metadata)"
-                class="text-[11px] text-gray-500 mt-2"
+                class="text-[11px] text-gray-500 mt-2 break-all"
               >
                 {{ metadataPreview(log.metadata) }}
               </p>

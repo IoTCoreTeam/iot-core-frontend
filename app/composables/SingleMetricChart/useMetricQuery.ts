@@ -9,7 +9,6 @@ import {
 
 const BASE_URL = (apiConfig.server || "").replace(/\/$/, "");
 const MAX_POINTS = 30;
-const UI_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 const timeFieldMap: Record<TimeframeKey, string> = {
   second: "sec",
@@ -24,7 +23,10 @@ interface UseMetricQueryProps {
   sensorIds?: string[];
   nodeIds?: string[];
   sensorType?: string;
+  selectedNodeId?: string;
 }
+
+const ALL_NODES_VALUE = "__all__";
 
 export function useMetricQuery(props: UseMetricQueryProps) {
   const fetchedSeries = ref<{ name: string; data: { x: number; y: number }[] }[]>([]);
@@ -35,6 +37,9 @@ export function useMetricQuery(props: UseMetricQueryProps) {
     const params = new URLSearchParams();
     const ids = props.sensorIds ?? [];
     const nodeIds = props.nodeIds ?? [];
+    const selectedNodeId = String(props.selectedNodeId ?? "").trim();
+    const hasSelectedNode =
+      selectedNodeId.length > 0 && selectedNodeId !== ALL_NODES_VALUE;
 
     params.set("time_field", timeFieldMap[props.selectedTimeframe]);
     params.set("limit", String(MAX_POINTS));
@@ -42,7 +47,11 @@ export function useMetricQuery(props: UseMetricQueryProps) {
     const mappedType = normalizeSensorType(props.sensorType ?? props.selectedMetricKey);
     if (mappedType) params.set("sensor_type", mappedType);
 
-    nodeIds.forEach(id => params.append("node_id", id));
+    if (hasSelectedNode) {
+      params.append("node_id", selectedNodeId);
+    } else {
+      nodeIds.forEach(id => params.append("node_id", id));
+    }
     ids.forEach(id => params.append("sensor_id", id));
     if (ids.length > 0) {
       params.set("latest_by_sensor", "1");
@@ -70,7 +79,6 @@ export function useMetricQuery(props: UseMetricQueryProps) {
       const rows = Array.isArray(payload) ? (payload as SensorQueryRow[]) : [];
       fetchedSeries.value = normalizeSensorSeriesRows(rows, {
         maxPoints: MAX_POINTS,
-        uiOffsetMs: UI_OFFSET_MS,
       });
     } catch (e: any) {
       fetchError.value = e.message;
@@ -87,6 +95,7 @@ export function useMetricQuery(props: UseMetricQueryProps) {
       props.sensorIds,
       props.nodeIds,
       props.sensorType,
+      props.selectedNodeId,
     ],
     fetchOnce,
     { immediate: true }

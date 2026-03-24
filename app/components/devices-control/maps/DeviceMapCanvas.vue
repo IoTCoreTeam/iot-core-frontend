@@ -168,6 +168,10 @@ function resolveNodeLatLng(row: DeviceRow): { lat: number; lng: number } | null 
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return null;
   }
+  // Treat (0, 0) as an unknown/default coordinate and do not render it on map.
+  if (lat === 0 && lng === 0) {
+    return null;
+  }
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return null;
   }

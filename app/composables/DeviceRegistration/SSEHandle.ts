@@ -48,6 +48,8 @@ type NodeCollectionsRefs = {
   controllerStatesByNode?: Ref<Record<string, ControllerState[]>>;
 };
 
+type RegisteredRowsRef = Ref<DeviceRow[]>;
+
 function normalizeStatus(value?: string | null): DeviceRow["status"] {
   return (value ?? "").toLowerCase() === "online" ? "online" : "offline";
 }
@@ -156,6 +158,72 @@ function sortRows(rows: DeviceRow[]) {
   return rows.slice().sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
   );
+}
+
+function normalizeGatewayLastSeen(payload: GatewayEventPayload): string | null {
+  return pickFirst(payload.last_seen, payload.lastSeen);
+}
+
+function normalizeNodeLastSeen(payload: NodeEventPayload, existing?: DeviceRow) {
+  return pickFirst(payload.last_seen, payload.lastSeen, payload.gateway_timestamp, existing?.lastSeen);
+}
+
+function buildNodeEventIndex(payload: GatewayEventPayload) {
+  const index = new Map<string, NodeEventPayload>();
+  const nodes = Array.isArray(payload?.nodes) ? payload.nodes : [];
+  nodes.forEach((node) => {
+    const id = resolveNodeId(node);
+    if (!id) return;
+    index.set(String(id), node);
+  });
+  return index;
+}
+
+export function syncRegisteredRowsFromGatewayPayload(
+  payload: GatewayEventPayload,
+  registeredRowsRef: RegisteredRowsRef,
+) {
+  const gatewayId = pickFirst(payload.id, null);
+  const nodeEventIndex = buildNodeEventIndex(payload);
+
+  if (!gatewayId && nodeEventIndex.size === 0) {
+    return;
+  }
+
+  const nextRows = registeredRowsRef.value.map((row) => {
+    if (row.resourceType === "gateway" && gatewayId) {
+      if (row.id === gatewayId || row.externalId === gatewayId) {
+        return {
+          ...row,
+          status: normalizeStatus(payload.status ?? row.status ?? null),
+          ip: pickFirst(payload.ip, row.ip),
+          mac: pickFirst(payload.mac, row.mac),
+          lastSeen: normalizeGatewayLastSeen(payload) ?? row.lastSeen ?? null,
+        };
+      }
+      return row;
+    }
+
+    if (row.resourceType === "node") {
+      const nodeKey = String(row.externalId ?? row.id ?? "");
+      const nodeEvent = nodeEventIndex.get(nodeKey);
+      if (!nodeEvent) {
+        return row;
+      }
+      return {
+        ...row,
+        gatewayId: pickFirst(nodeEvent.gateway_id, nodeEvent.gatewayId, row.gatewayId),
+        ip: pickFirst(nodeEvent.ip, nodeEvent.ip_address, row.ip),
+        mac: pickFirst(nodeEvent.mac, nodeEvent.mac_address, row.mac),
+        status: normalizeStatus(nodeEvent.status ?? row.status ?? null),
+        lastSeen: normalizeNodeLastSeen(nodeEvent, row) ?? null,
+      };
+    }
+
+    return row;
+  });
+
+  registeredRowsRef.value = nextRows;
 }
 
 export function createNodeCollectionsStore() {

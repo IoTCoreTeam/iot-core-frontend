@@ -1,6 +1,6 @@
 import type { Component } from "vue";
 
-export type DeviceTabKey = "gateways" | "nodes" | "registered";
+export type DeviceTabKey = "gateways" | "nodes" | "registered" | "registered_control_urls";
 
 export type DeviceRowStatus = "online" | "offline";
 
@@ -34,6 +34,9 @@ export type DeviceRow = {
   devices?: ControllerState[] | null;
   connectedNodes?: string[] | null;
   managed_areas?: { id: number; name: string }[] | null;
+  controllerId?: string | null;
+  inputType?: string | null;
+  url?: string | null;
 };
 
 export type NodeInfo = {

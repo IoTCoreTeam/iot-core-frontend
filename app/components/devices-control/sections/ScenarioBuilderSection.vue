@@ -394,7 +394,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { message, Modal } from "ant-design-vue";
 import {
   VueFlow,
@@ -418,9 +418,8 @@ import BaseModal from "@/components/Modals/BaseModal.vue";
 import LoadingState from "@/components/common/LoadingState.vue";
 import { apiConfig } from "~~/config/api";
 import { useAuthStore } from "~~/stores/auth";
-import { stopWorkflow } from "@/composables/Scenario/handleWorkflow";
+import { runWorkflow, stopWorkflow } from "@/composables/Scenario/handleWorkflow";
 import { useMetrics } from "@/composables/useMetrics";
-import { useWorkflowSteps } from "@/composables/Scenario/useWorkflowSteps";
 import {
   canConnectFromNode,
   canCreateEnd,
@@ -538,22 +537,29 @@ const isRunningFlow = ref(false);
 const isStoppingFlow = ref(false);
 const isFlowVisible = ref(false);
 const activeNode = ref<Node<NodeData> | null>(null);
-const workflowStreamAbortController = ref<AbortController | null>(null);
-const {
-  workflowSteps,
-  currentWorkflowStep,
-  workflowErrorMessage,
-  hasWorkflowCompleted,
-  workflowOverallStatus,
-  resetWorkflowSteps,
-  seedWorkflowSteps,
-  handleWorkflowStreamEvent,
-} = useWorkflowSteps({
-  nodes,
-  resolveControlUrlLabel: (controlUrlId: string) => {
-    return controlUrlLabelMap.value.get(controlUrlId) ?? null;
+const workflowSteps = ref([
+  {
+    key: "stream-disabled",
+    title: "Workflow progress stream is temporarily disabled",
+    status: "process" as const,
+    description: "Only run/stop commands are active.",
   },
-});
+]);
+const currentWorkflowStep = ref(0);
+const workflowErrorMessage = ref<string | null>(null);
+const workflowOverallStatus = computed(() => "process");
+function resetWorkflowSteps() {
+  workflowSteps.value = [
+    {
+      key: "stream-disabled",
+      title: "Workflow progress stream is temporarily disabled",
+      status: "process",
+      description: "Only run/stop commands are active.",
+    },
+  ];
+  currentWorkflowStep.value = 0;
+  workflowErrorMessage.value = null;
+}
 const actionForm = ref({
   control_url_id: "",
   duration_seconds: 5,
@@ -803,73 +809,6 @@ function saveFlow() {
   markCanvasAsSaved();
 }
 
-function parseSseBlock(block: string) {
-  const lines = block.split(/\r?\n/);
-  let eventName = "message";
-  const dataLines: string[] = [];
-
-  for (const line of lines) {
-    if (line.startsWith("event:")) {
-      eventName = line.slice("event:".length).trim();
-      continue;
-    }
-    if (line.startsWith("data:")) {
-      dataLines.push(line.slice("data:".length).trim());
-    }
-  }
-
-  const dataText = dataLines.join("\n");
-  if (!eventName && !dataText) {
-    return null;
-  }
-  let data: any = dataText;
-  if (dataText) {
-    try {
-      data = JSON.parse(dataText);
-    } catch {
-      data = dataText;
-    }
-  }
-  return { eventName, data };
-}
-
-async function streamWorkflow(id: string | number, authorization: string) {
-  const base = controlModuleBase.value;
-  if (!base) throw new Error("API base URL is not configured.");
-  const controller = new AbortController();
-  workflowStreamAbortController.value = controller;
-
-  const response = await fetch(`${base}/workflows/${id}/run/stream`, {
-    method: "GET",
-    headers: {
-      Accept: "text/event-stream",
-      Authorization: authorization,
-    },
-    signal: controller.signal,
-  });
-
-  if (!response.ok || !response.body) {
-    throw new Error("Failed to start workflow stream.");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split(/\n\n/);
-    buffer = parts.pop() ?? "";
-    for (const part of parts) {
-      const parsed = parseSseBlock(part);
-      if (!parsed) continue;
-      handleWorkflowStreamEvent(parsed.eventName, parsed.data);
-    }
-  }
-}
-
 async function runFlow() {
   if (!import.meta.client) return;
   if (isRunningFlow.value) return;
@@ -882,32 +821,18 @@ async function runFlow() {
     message.error("Missing authorization.");
     return;
   }
-  if (workflowStreamAbortController.value) {
-    workflowStreamAbortController.value.abort();
-    workflowStreamAbortController.value = null;
-  }
   resetWorkflowSteps();
-  seedWorkflowSteps();
   isRunningFlow.value = true;
-  workflowErrorMessage.value = null;
-  hasWorkflowCompleted.value = false;
-  message.info("Scenario is starting...");
+  message.info("Scenario is starting (progress stream disabled)...");
   try {
-    await streamWorkflow(props.scenario.id, authorization);
-    if (hasWorkflowCompleted.value) {
-      message.success("Scenario ran successfully.");
-    } else if (workflowErrorMessage.value) {
-      message.error(workflowErrorMessage.value);
-    }
+    await runWorkflow(props.scenario.id, authorization);
+    message.success("Scenario queued successfully.");
   } catch (error: any) {
-    if (error?.name !== "AbortError") {
-      workflowErrorMessage.value = error?.message ?? "Failed to run scenario.";
-      message.error(workflowErrorMessage.value);
-    }
+    workflowErrorMessage.value = error?.message ?? "Failed to run scenario.";
+    message.error(workflowErrorMessage.value);
   } finally {
     isRunningFlow.value = false;
     isStoppingFlow.value = false;
-    workflowStreamAbortController.value = null;
   }
 }
 
@@ -922,10 +847,6 @@ async function stopFlow() {
   isStoppingFlow.value = true;
   try {
     await stopWorkflow(props.scenario.id, authorization);
-    if (workflowStreamAbortController.value) {
-      workflowStreamAbortController.value.abort();
-      workflowStreamAbortController.value = null;
-    }
     message.success("Scenario stopped.");
   } catch (error: any) {
     message.error(error?.message ?? "Failed to stop scenario.");
@@ -1205,13 +1126,6 @@ onMounted(() => {
   setTimeout(() => {
     isFlowVisible.value = true;
   }, 1000);
-});
-
-onBeforeUnmount(() => {
-  if (workflowStreamAbortController.value) {
-    workflowStreamAbortController.value.abort();
-    workflowStreamAbortController.value = null;
-  }
 });
 
 watch(

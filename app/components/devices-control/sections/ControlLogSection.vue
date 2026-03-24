@@ -5,6 +5,7 @@
         :bucket="controlAckBucket"
         :buckets="controlAckBuckets"
         :totals="controlAckTotals"
+        :rows="rows"
       />
       <ControlAckKpiStrip
         :totals="controlAckTotals"
@@ -15,7 +16,7 @@
       <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
       <div
         :class="[
-          'bg-white rounded border border-slate-200 overflow-hidden w-full lg:w-[24%] lg:max-w-[24%] shrink-0 h-fit lg:sticky lg:top-4',
+          'bg-white rounded border border-slate-200 overflow-hidden w-full lg:w-64 shrink-0 h-fit lg:sticky lg:top-4',
           { hidden: !isFilterVisible },
         ]"
       >
@@ -47,7 +48,7 @@
       <div
         :class="[
           'flex flex-col gap-4',
-          isFilterVisible ? 'w-full lg:w-[76%]' : 'w-full',
+          isFilterVisible ? 'flex-1' : 'max-w-8xl w-full mx-auto',
         ]"
       >
         <DataBoxCard

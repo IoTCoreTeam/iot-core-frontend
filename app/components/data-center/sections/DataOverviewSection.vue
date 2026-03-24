@@ -58,6 +58,7 @@
           :bucket="controlAckBucket"
           :buckets="controlAckBuckets"
           :totals="controlAckTotals"
+          :rows="controlAckRows"
         />
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -83,8 +84,10 @@ import LogsMonitoringCard from "./data-overview/LogsMonitoringCard.vue";
 import ControlAckChartsPanel from "./data-overview/ControlAckChartsPanel.vue";
 import {
   DEFAULT_CONTROL_ACK_BUCKET,
+  DEFAULT_CONTROL_ACK_TOPIC,
   DEFAULT_CONTROL_ACK_TOTALS,
   type ControlAckBucket,
+  type ControlLogRow,
   type ControlAckTotals,
 } from "@/types/control-ack";
 const authStore = useAuthStore();
@@ -105,6 +108,7 @@ const logsSeries = ref<{ name: string; data: number[] }[]>([]);
 const controlAckBucket = ref<"hour" | "minute">(DEFAULT_CONTROL_ACK_BUCKET);
 const controlAckBuckets = ref<ControlAckBucket[]>([]);
 const controlAckTotals = ref<ControlAckTotals>({ ...DEFAULT_CONTROL_ACK_TOTALS });
+const controlAckRows = ref<ControlLogRow[]>([]);
 const controlAckApi = useControlAckApi(apiConfig.server || "");
 
 async function fetchJson(url: string) {
@@ -165,11 +169,26 @@ async function fetchOverviewData() {
       controlAckBucket.value = overview.bucket;
       controlAckBuckets.value = overview.buckets;
       controlAckTotals.value = overview.totals;
+      controlAckRows.value = await controlAckApi.fetchRows(
+        {
+          gateway_id: "",
+          node_id: "",
+          device: "",
+          state: "",
+          status: "",
+          topic: DEFAULT_CONTROL_ACK_TOPIC,
+          timestamp_from: "",
+          timestamp_to: "",
+        },
+        120,
+        1,
+      );
     } catch (error) {
       console.error("Failed to fetch control ack overview:", error);
       controlAckBucket.value = DEFAULT_CONTROL_ACK_BUCKET;
       controlAckBuckets.value = [];
       controlAckTotals.value = { ...DEFAULT_CONTROL_ACK_TOTALS };
+      controlAckRows.value = [];
     }
   } catch (error) {
     console.error("Failed to fetch data overview:", error);

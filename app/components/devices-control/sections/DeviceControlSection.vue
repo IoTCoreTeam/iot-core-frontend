@@ -331,14 +331,10 @@ async function handleExecuteControlUrl(widget: { id: string; raw: ControlUrlItem
   const url = widget.raw.url ?? "";
   if (!url) throw new Error("Missing control URL.");
   const actionType = normalizeActionType(widget.raw.input_type);
-  const gatewayId = widget.raw.node?.gateway?.external_id ?? widget.raw.node?.gateway?.id ?? null;
-  const nodeId = widget.raw.node?.external_id ?? widget.raw.node?.id ?? null;
   await executeControlUrl(authorization, widget.id, {
     url,
     state: nextState ? "on" : "off",
     action_type: actionType ?? undefined,
-    gateway_id: gatewayId ?? undefined,
-    node_id: nodeId ?? undefined,
   });
 }
 
@@ -348,14 +344,10 @@ async function handleExecuteAnalog(widget: { id: string; raw: ControlUrlItem }, 
   const url = widget.raw.url ?? "";
   if (!url) throw new Error("Missing control URL.");
   const actionType = normalizeActionType(widget.raw.input_type);
-  const gatewayId = widget.raw.node?.gateway?.external_id ?? widget.raw.node?.gateway?.id ?? null;
-  const nodeId = widget.raw.node?.external_id ?? widget.raw.node?.id ?? null;
   await executeControlUrl(authorization, widget.id, {
     url,
     value,
     action_type: actionType ?? undefined,
-    gateway_id: gatewayId ?? undefined,
-    node_id: nodeId ?? undefined,
   });
 }
 

@@ -26,6 +26,7 @@ export function useWorkflowSteps<TNodeData extends WorkflowNodeDataBase>(params:
   const workflowErrorMessage = ref<string | null>(null);
   const hasWorkflowCompleted = ref(false);
   const lastNodeStepIndex = ref<number | null>(null);
+  const pendingOffStepByControlUrl = ref<Record<string, number>>({});
   const lastNodeContext = ref<{
     label: string;
     controlUrlId?: string | null;
@@ -48,6 +49,7 @@ export function useWorkflowSteps<TNodeData extends WorkflowNodeDataBase>(params:
     hasWorkflowCompleted.value = false;
     lastNodeStepIndex.value = null;
     lastNodeContext.value = null;
+    pendingOffStepByControlUrl.value = {};
   }
 
   function seedWorkflowSteps() {
@@ -117,6 +119,47 @@ export function useWorkflowSteps<TNodeData extends WorkflowNodeDataBase>(params:
     };
     workflowSteps.value.push(step);
     currentWorkflowStep.value = workflowSteps.value.length - 1;
+  }
+
+  function appendDelayedOffStep(payload: Record<string, any>) {
+    const label = lastNodeContext.value?.label ?? resolveActionLabelFromPayload(payload);
+    const delay = Number(payload.delay_seconds ?? 0);
+    const controlUrlId = String(payload.control_url_id ?? "");
+    const step: WorkflowStep = {
+      key: `action-off-delayed-${workflowSteps.value.length}`,
+      title: `${label} OFF (Delayed)`,
+      status: "process",
+      description: delay > 0 ? `Scheduled after ${delay}s` : "Scheduled",
+      controlUrlId: controlUrlId || lastNodeContext.value?.controlUrlId ?? null,
+    };
+    workflowSteps.value.push(step);
+    const idx = workflowSteps.value.length - 1;
+    currentWorkflowStep.value = idx;
+    if (controlUrlId) {
+      pendingOffStepByControlUrl.value[controlUrlId] = idx;
+    }
+  }
+
+  function finalizeDelayedOffStep(payload: Record<string, any>, success: boolean) {
+    const controlUrlId = String(payload.control_url_id ?? "");
+    const idx =
+      controlUrlId && pendingOffStepByControlUrl.value[controlUrlId] !== undefined
+        ? pendingOffStepByControlUrl.value[controlUrlId]
+        : null;
+    if (idx === null) return;
+    const step = workflowSteps.value[idx];
+    if (!step) return;
+    step.status = success ? "finish" : "error";
+    const pending = Number(payload.pending_off_jobs ?? 0);
+    if (success) {
+      step.description = pending > 0 ? `Completed. Pending delayed OFF: ${pending}` : "Completed";
+    } else {
+      step.description = payload.error ? `Failed: ${payload.error}` : "Failed";
+      workflowErrorMessage.value = payload.error ?? "Delayed OFF command failed.";
+    }
+    if (controlUrlId) {
+      delete pendingOffStepByControlUrl.value[controlUrlId];
+    }
   }
 
   function markCurrentNodeError(messageText: string) {
@@ -247,6 +290,18 @@ export function useWorkflowSteps<TNodeData extends WorkflowNodeDataBase>(params:
         appendActionPhaseStep(label, "OFF");
         break;
       }
+      case "action_off_scheduled": {
+        appendDelayedOffStep(payload);
+        break;
+      }
+      case "action_off_delayed_completed": {
+        finalizeDelayedOffStep(payload, true);
+        break;
+      }
+      case "action_off_delayed_failed": {
+        finalizeDelayedOffStep(payload, false);
+        break;
+      }
       case "action_on_failed":
       case "action_off_failed":
       case "action_device_offline": {
@@ -255,7 +310,17 @@ export function useWorkflowSteps<TNodeData extends WorkflowNodeDataBase>(params:
       }
       case "workflow_end_reached": {
         finalizeLastNodeStep("finish");
-        ensureEndStep("finish");
+        ensureEndStep("process");
+        break;
+      }
+      case "workflow_waiting_off_jobs": {
+        const pending = Number(payload.pending_off_jobs ?? 0);
+        ensureEndStep("process");
+        updateCurrentNodeDescription(
+          pending > 0
+            ? `Waiting delayed OFF jobs: ${pending}`
+            : "Waiting delayed OFF jobs...",
+        );
         break;
       }
       case "workflow_failed": {

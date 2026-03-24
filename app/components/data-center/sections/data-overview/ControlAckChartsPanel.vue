@@ -21,12 +21,12 @@
     <article class="min-h-[320px] bg-white border border-slate-200 rounded p-4">
       <div>
         <p class="text-sm font-semibold text-slate-900">ACK Latency</p>
-        <p class="text-xs text-slate-500">Average and p95 latency (ms)</p>
+        <p class="text-xs text-slate-500">Latency per ACK record (ms)</p>
       </div>
       <div class="mt-4 h-[230px]">
         <ClientOnly>
           <ApexChart
-            type="bar"
+            type="line"
             height="100%"
             width="100%"
             :options="latencyOptions"
@@ -59,7 +59,7 @@
 <script setup lang="ts">
 import type { ApexOptions } from "apexcharts";
 import { computed, defineAsyncComponent, toRefs } from "vue";
-import type { ControlAckBucket, ControlAckTotals } from "@/types/control-ack";
+import type { ControlAckBucket, ControlAckTotals, ControlLogRow } from "@/types/control-ack";
 
 const ApexChart = defineAsyncComponent(() => import("vue3-apexcharts"));
 
@@ -67,9 +67,18 @@ const props = defineProps<{
   bucket: "hour" | "minute";
   buckets: ControlAckBucket[];
   totals: ControlAckTotals;
+  rows?: ControlLogRow[];
 }>();
 
-const { bucket, buckets, totals } = toRefs(props);
+const { bucket, buckets, totals, rows } = toRefs(props);
+
+const orderedRows = computed(() =>
+  [...(rows.value ?? [])].sort((a, b) => {
+    const left = Date.parse(a?.received_at ?? a?.timestamp ?? "") || 0;
+    const right = Date.parse(b?.received_at ?? b?.timestamp ?? "") || 0;
+    return left - right;
+  }),
+);
 
 const formatBucketLabel = (value: string) => {
   const date = new Date(value);
@@ -84,8 +93,28 @@ const formatBucketLabel = (value: string) => {
   }).format(date);
 };
 
-const categories = computed(() =>
+const timelineCategories = computed(() =>
   buckets.value.map((item) => formatBucketLabel(item.bucket)),
+);
+
+const latencyRows = computed(() => orderedRows.value.slice(-30));
+
+function formatExecutionTimeLabel(value?: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+const latencyCategories = computed(() =>
+  latencyRows.value.map((item) =>
+    formatExecutionTimeLabel(item?.timestamp ?? item?.received_at ?? null),
+  ),
 );
 
 const commandTimelineSeries = computed(() => [
@@ -103,7 +132,7 @@ const commandTimelineOptions = computed<ApexOptions>(() => ({
   },
   colors: ["#2563eb", "#0ea5e9"],
   xaxis: {
-    categories: categories.value,
+    categories: timelineCategories.value,
     labels: {
       rotate: -35,
       style: { fontSize: "10px", colors: "#94a3b8" },
@@ -126,39 +155,44 @@ const commandTimelineOptions = computed<ApexOptions>(() => ({
   tooltip: { theme: "light" },
 }));
 
+function toMs(value?: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+}
+
 const latencySeries = computed(() => [
   {
-    name: "Avg",
-    data: buckets.value.map((item) =>
-      item.avg_latency_ms === null ? null : Number(item.avg_latency_ms),
-    ),
-  },
-  {
-    name: "p95",
-    data: buckets.value.map((item) =>
-      item.p95_latency_ms === null ? null : Number(item.p95_latency_ms),
-    ),
+    name: "ACK latency",
+    data: latencyRows.value.map((item) => {
+      const sentMs = toMs(item?.timestamp ?? null);
+      const receivedMs = toMs(item?.received_at ?? null);
+      if (sentMs === null || receivedMs === null) return null;
+      const latency = receivedMs - sentMs;
+      return Number.isFinite(latency) && latency >= 0 ? latency : null;
+    }),
   },
 ]);
 
 const latencyOptions = computed<ApexOptions>(() => ({
   chart: {
-    type: "bar",
+    type: "line",
     toolbar: { show: false },
     fontFamily: "inherit",
     foreColor: "#64748b",
   },
-  colors: ["#2563eb", "#1d4ed8"],
-  plotOptions: {
-    bar: {
-      columnWidth: "42%",
-      borderRadius: 2,
-    },
+  colors: ["#1d4ed8"],
+  stroke: {
+    curve: "smooth",
+    width: 2,
+  },
+  markers: {
+    size: 0,
   },
   xaxis: {
-    categories: categories.value,
+    categories: latencyCategories.value,
     labels: {
-      rotate: -35,
+      rotate: 0,
       style: { fontSize: "10px", colors: "#94a3b8" },
     },
   },
@@ -177,7 +211,13 @@ const latencyOptions = computed<ApexOptions>(() => ({
     horizontalAlign: "right",
   },
   dataLabels: { enabled: false },
-  tooltip: { theme: "light" },
+  tooltip: {
+    theme: "light",
+    y: {
+      formatter: (val: number | null) =>
+        val === null || val === undefined ? "-" : `${Math.round(val)} ms`,
+    },
+  },
 }));
 
 const successRateSeries = computed(() => {

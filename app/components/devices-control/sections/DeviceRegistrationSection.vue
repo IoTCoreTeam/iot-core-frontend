@@ -161,6 +161,18 @@
                         <template v-else-if="column.key === 'type'">
                           <p class="text-xs capitalize">{{ row.type || "N/A" }}</p>
                         </template>
+                        <template v-else-if="column.key === 'controllerId'">
+                          <p class="text-xs">{{ row.controllerId || "N/A" }}</p>
+                        </template>
+                        <template v-else-if="column.key === 'inputType'">
+                          <p class="text-xs capitalize">{{ row.inputType || "N/A" }}</p>
+                        </template>
+                        <template v-else-if="column.key === 'url'">
+                          <p class="text-xs truncate">{{ row.url || "N/A" }}</p>
+                        </template>
+                        <template v-else-if="column.key === 'gatewayId'">
+                          <p class="text-xs">{{ row.gatewayId || "N/A" }}</p>
+                        </template>
                         <template v-else-if="column.key === 'ip'">
                           <p class="text-xs">{{ row.ip || "N/A" }}</p>
                         </template>
@@ -235,6 +247,7 @@
                             <template
                               v-if="
                                 activeDeviceTab !== 'registered' &&
+                                activeDeviceTab !== 'registered_control_urls' &&
                                 row.registered === false
                               "
                             >
@@ -255,7 +268,12 @@
                                 <span class="sr-only">Register</span>
                               </button>
                             </template>
-                            <template v-else-if="activeDeviceTab !== 'registered'">
+                            <template
+                              v-else-if="
+                                activeDeviceTab !== 'registered' &&
+                                activeDeviceTab !== 'registered_control_urls'
+                              "
+                            >
                               <button
                                 type="button"
                                 class="w-8 h-8 inline-flex items-center justify-center rounded border border-red-200 text-red-600 hover:bg-red-50 cursor-pointer"
@@ -270,6 +288,23 @@
                               >
                                 <BootstrapIcon name="slash-circle" class="w-3 h-3" />
                                 <span class="sr-only">Deactivate</span>
+                              </button>
+                            </template>
+                            <template v-else-if="activeDeviceTab === 'registered_control_urls'">
+                              <button
+                                type="button"
+                                class="w-8 h-8 inline-flex items-center justify-center rounded border border-red-200 text-red-600 hover:bg-red-50 cursor-pointer"
+                                :class="{
+                                  'opacity-50 cursor-not-allowed':
+                                    isDeletingRegisteredControlUrl(row),
+                                }"
+                                :disabled="isDeletingRegisteredControlUrl(row)"
+                                :aria-busy="isDeletingRegisteredControlUrl(row)"
+                                title="Delete Control URL"
+                                @click.stop="handleDeleteRegisteredControlUrl(row)"
+                              >
+                                <BootstrapIcon name="trash" class="w-3 h-3" />
+                                <span class="sr-only">Delete Control URL</span>
                               </button>
                             </template>
                             <template v-else>
@@ -457,6 +492,7 @@ import { useAuthStore } from "~~/stores/auth";
 import { useHandleUrlControl } from "@/composables/DeviceRegistration/handleUrlControl";
 import {
   createNodeCollectionsStore,
+  syncRegisteredRowsFromGatewayPayload,
   type GatewayEventPayload,
 } from "@/composables/DeviceRegistration/SSEHandle";
 import { useLoadDataRow } from "@/composables/DeviceRegistration/loadDataRow";
@@ -471,6 +507,7 @@ defineProps<{
 const gatewayRows = ref<DeviceRow[]>([]);
 const nodeRows = ref<DeviceRow[]>([]);
 const registeredRows = ref<DeviceRow[]>([]);
+const registeredControlUrlRows = ref<DeviceRow[]>([]);
 const controllerStatesByNode = ref<Record<string, ControllerState[]>>({});
 const deviceTableKey = ref(0);
 const isGatewayDetailOpen = ref(false);
@@ -502,6 +539,7 @@ const isGatewayIdMapLoading = ref(false);
 const nodeIdMap = ref<Record<string, string>>({});
 const isNodeIdMapLoading = ref(false);
 const deletingRegisteredDeviceMap = ref<Record<string, boolean>>({});
+const deletingRegisteredControlUrlMap = ref<Record<string, boolean>>({});
 
 function getRegisteredDeviceKey(row: DeviceRow) {
   return `${row.resourceType ?? "unknown"}:${row.id}`;
@@ -515,6 +553,23 @@ function setDeletingRegisteredDevice(row: DeviceRow, value: boolean) {
   deletingRegisteredDeviceMap.value = {
     ...deletingRegisteredDeviceMap.value,
     [getRegisteredDeviceKey(row)]: value,
+  };
+}
+
+function getRegisteredControlUrlKey(row: DeviceRow) {
+  return row.id;
+}
+
+function isDeletingRegisteredControlUrl(row: DeviceRow) {
+  return Boolean(
+    deletingRegisteredControlUrlMap.value[getRegisteredControlUrlKey(row)],
+  );
+}
+
+function setDeletingRegisteredControlUrl(row: DeviceRow, value: boolean) {
+  deletingRegisteredControlUrlMap.value = {
+    ...deletingRegisteredControlUrlMap.value,
+    [getRegisteredControlUrlKey(row)]: value,
   };
 }
 
@@ -586,6 +641,27 @@ function mapRegisteredNodeRow(row: any): DeviceRow {
   };
 }
 
+function mapRegisteredControlUrlRow(row: any): DeviceRow {
+  const controlUrlId = row?.id ? String(row.id) : "";
+  const controllerId = row?.controller_id ? String(row.controller_id) : null;
+  const nodeExternalId = row?.node?.external_id
+    ? String(row.node.external_id)
+    : null;
+  return {
+    id: controlUrlId,
+    externalId: nodeExternalId,
+    resourceType: "node",
+    name: row?.name ?? row?.url ?? controllerId ?? `Control URL ${controlUrlId}`,
+    gatewayId: row?.node?.gateway?.external_id ?? null,
+    type: row?.input_type ?? null,
+    status: "offline",
+    registered: true,
+    controllerId,
+    inputType: row?.input_type ?? null,
+    url: row?.url ?? null,
+  };
+}
+
 async function loadRegisteredDevices() {
   if (!import.meta.client) return;
   if (!apiConfig.controlModule) return;
@@ -608,6 +684,36 @@ async function loadRegisteredDevices() {
     console.error("Failed to load registered devices", error);
     registeredRows.value = [];
     message.error(error?.message ?? "Failed to load registered devices.");
+  } finally {
+    isDeviceLoading.value = false;
+  }
+}
+
+async function loadRegisteredControlUrls() {
+  if (!import.meta.client) return;
+  if (!apiConfig.controlModule) return;
+  const authorization = authStore.authorizationHeader;
+  if (!authorization) return;
+
+  isDeviceLoading.value = true;
+  try {
+    const base = apiConfig.controlModule.replace(/\/$/, "");
+    const controlUrlPayload = await fetchAllPages(
+      `${base}/control-urls?include=gateway`,
+      authorization,
+    );
+    registeredControlUrlRows.value = controlUrlPayload
+      .map(mapRegisteredControlUrlRow)
+      .sort((a, b) =>
+        (a.name ?? "").localeCompare(b.name ?? "", undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+      );
+  } catch (error: any) {
+    console.error("Failed to load registered control urls", error);
+    registeredControlUrlRows.value = [];
+    message.error(error?.message ?? "Failed to load registered control urls.");
   } finally {
     isDeviceLoading.value = false;
   }
@@ -779,6 +885,54 @@ async function handleDeleteRegisteredDevice(row: DeviceRow) {
   }
 }
 
+async function handleDeleteRegisteredControlUrl(row: DeviceRow) {
+  if (!apiConfig.controlModule) {
+    message.warning("Control module endpoint is not configured.");
+    return;
+  }
+  const authorization = authStore.authorizationHeader;
+  if (!authorization) {
+    message.warning("Missing authentication token.");
+    return;
+  }
+  if (!row?.id) {
+    message.warning("Missing control url id.");
+    return;
+  }
+  if (isDeletingRegisteredControlUrl(row)) {
+    return;
+  }
+
+  const base = apiConfig.controlModule.replace(/\/$/, "");
+  const encodedId = encodeURIComponent(row.id);
+  const endpoint = `${base}/control-urls/${encodedId}`;
+
+  setDeletingRegisteredControlUrl(row, true);
+  try {
+    const response = await fetch(endpoint, {
+      method: "DELETE",
+      headers: {
+        Authorization: authorization,
+        Accept: "application/json",
+      },
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(payload?.message ?? "Failed to delete control url.");
+    }
+
+    message.success(payload?.message ?? "Control URL deleted.");
+    registeredControlUrlRows.value = registeredControlUrlRows.value.filter(
+      (item) => item.id !== row.id,
+    );
+  } catch (error: any) {
+    console.error("Failed to delete control url", error);
+    message.error(error?.message ?? "Unable to delete control url.");
+  } finally {
+    setDeletingRegisteredControlUrl(row, false);
+  }
+}
+
 async function handleEnroll(row: DeviceRow) {
   if (activeDeviceTab.value !== "gateways" && !row.gatewayId) {
     message.warning("Gateway ID is missing for this node.");
@@ -905,6 +1059,11 @@ const deviceTabs = computed<DeviceTab[]>(() => [
   { key: "gateways", label: "Gateways", rows: gatewayRows.value },
   { key: "nodes", label: "Nodes", rows: nodeRows.value },
   { key: "registered", label: "Registered Device", rows: registeredRows.value },
+  {
+    key: "registered_control_urls",
+    label: "Registered Control URL",
+    rows: registeredControlUrlRows.value,
+  },
 ]);
 
 const defaultDeviceTab = computed(() => deviceTabs.value[0]!);
@@ -943,6 +1102,18 @@ const registeredDeviceTableColumns: Array<{
   { key: "status", label: "Status", width: "auto" },
   { key: "actions", label: "Actions", width: "auto" },
 ];
+const registeredControlUrlTableColumns: Array<{
+  key: string;
+  label: string;
+  width: string;
+}> = [
+  { key: "controllerId", label: "Controller ID", width: "18%" },
+  { key: "name", label: "Name", width: "18%" },
+  { key: "url", label: "URL", width: "24%" },
+  { key: "inputType", label: "Input Type", width: "12%" },
+  { key: "gatewayId", label: "Gateway ID", width: "18%" },
+  { key: "actions", label: "Actions", width: "10%" },
+];
 const {
   controlUrlItems,
   controlUrlLoadError,
@@ -966,6 +1137,9 @@ const {
 const deviceTableColumnDefinitions = computed(() => {
   if (activeDeviceTab.value === "gateways") return gatewayTableColumns;
   if (activeDeviceTab.value === "nodes") return nodeTableColumns;
+  if (activeDeviceTab.value === "registered_control_urls") {
+    return registeredControlUrlTableColumns;
+  }
   return registeredDeviceTableColumns;
 });
 const deviceTableColumns = computed(() =>
@@ -1032,6 +1206,10 @@ function refreshDevices() {
     loadRegisteredDevices();
     return;
   }
+  if (activeDeviceTab.value === "registered_control_urls") {
+    loadRegisteredControlUrls();
+    return;
+  }
   isDeviceLoading.value = true;
   nodeCollectionsStore.clearNodeCache({ nodeRows, controllerStatesByNode });
 
@@ -1079,6 +1257,12 @@ function exportDevices() {
         return row.status ?? "";
       case "registered":
         return row.registered ?? "";
+      case "controllerId":
+        return row.controllerId ?? "";
+      case "inputType":
+        return row.inputType ?? "";
+      case "url":
+        return row.url ?? "";
       case "lastSeen":
         return row.lastSeen ?? "";
       default:
@@ -1216,6 +1400,7 @@ function handleGatewayUpdate(event: MessageEvent) {
       nodeRows,
       controllerStatesByNode,
     });
+    syncRegisteredRowsFromGatewayPayload(payload, registeredRows);
     if (activeControlUrlNodeId.value) {
       syncControlUrlItemsFromControllerStates();
     }
@@ -1257,6 +1442,7 @@ onMounted(() => {
   if (!import.meta.client) return;
   loadGatewayIdMap();
   loadRegisteredDevices();
+  loadRegisteredControlUrls();
   connectGatewaySse();
   startDeviceStatusPolling();
   fetchMetrics();

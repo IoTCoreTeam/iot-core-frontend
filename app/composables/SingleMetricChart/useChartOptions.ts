@@ -1,6 +1,26 @@
 import { computed, type ComputedRef } from "vue";
 import type { ApexOptions } from "apexcharts";
 import type { TimeframeKey } from "@/types/dashboard";
+import { formatIotDateTime } from "~~/config/iot-time-format";
+
+const axisTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+const tooltipTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
 
 export function useChartOptions(params: {
   selectedTimeframe: ComputedRef<TimeframeKey>;
@@ -57,14 +77,11 @@ export function useChartOptions(params: {
         type: "datetime",
         labels: {
           datetimeUTC: false,
-          datetimeFormatter: {
-            year: "yyyy",
-            month: "dd MMM",
-            day: "dd MMM",
-            hour: "HH:mm:ss",
-            minute: "HH:mm:ss",
-            second: "HH:mm:ss",
-          },
+          formatter: (value: string, timestamp?: number) =>
+            formatIotDateTime(
+              typeof timestamp === "number" ? timestamp : value,
+              { formatter: axisTimeFormatter, fallback: "--" },
+            ),
           style: { fontSize: "11px", colors: "#6b7280" },
         },
         axisBorder: { color: "#e5e7eb" },
@@ -84,7 +101,13 @@ export function useChartOptions(params: {
       },
       colors: seriesColors.value,
       tooltip: {
-        x: { format: "dd MMM yyyy HH:mm" },
+        x: {
+          formatter: (value: string | number) =>
+            formatIotDateTime(value, {
+              formatter: tooltipTimeFormatter,
+              fallback: "--",
+            }),
+        },
         y: {
           formatter: (val: number) => {
             const unit = params.selectedUnit.value;

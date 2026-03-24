@@ -184,15 +184,6 @@
     </div>
   </div>
 
-  <AreaNodesModal
-    v-if="isAreaNodesModalOpen"
-    v-model="isAreaNodesModalOpen"
-    :area="selectedArea"
-    :nodes="areaNodes"
-    :gateways="gatewayRows"
-    @close="clearSelectedArea"
-  />
-
   <BaseNodeDetailModal
     v-if="isNodeDetailOpen"
     v-model="isNodeDetailOpen"
@@ -200,12 +191,104 @@
     title="Node Details"
     @close="closeNodeDetail"
   />
+
+  <a-drawer
+    :open="isAreaNodesDrawerOpen"
+    :title="areaNodesDrawerTitle"
+    placement="right"
+    :width="980"
+    @close="clearSelectedArea"
+  >
+    <DataBoxCard
+      class="w-full border-0 shadow-none"
+      :is-loading="false"
+      :columns="6"
+      :has-data="pagedAreaNodes.length > 0"
+      :elevated="false"
+      :padded="false"
+      :scroll-body="true"
+      :pagination="{
+        page: areaNodesPage,
+        perPage: areaNodesPerPage,
+        lastPage: areaNodesLastPage,
+        total: areaNodesTotal,
+      }"
+      @prev-page="areaNodesPage = Math.max(1, areaNodesPage - 1)"
+      @next-page="areaNodesPage = Math.min(areaNodesLastPage, areaNodesPage + 1)"
+      @change-per-page="(value) => { areaNodesPerPage = value; areaNodesPage = 1; }"
+    >
+      <template #head>
+        <tr class="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-500">
+          <th class="px-2 py-2 font-semibold text-start">Name</th>
+          <th class="px-2 py-2 font-semibold text-start">Type</th>
+          <th class="px-2 py-2 font-semibold text-start">Gateway</th>
+          <th class="px-2 py-2 font-semibold text-center">Registered</th>
+          <th class="px-2 py-2 font-semibold text-right">Last Seen</th>
+          <th class="px-2 py-2 font-semibold text-center">Actions</th>
+        </tr>
+      </template>
+
+      <template #default>
+        <tr
+          v-for="node in pagedAreaNodes"
+          :key="node.id"
+          class="hover:bg-gray-50 transition-colors text-xs border-b border-gray-100"
+        >
+          <td class="px-2 py-2 text-gray-700 text-start">
+            <div class="font-medium">{{ node.name }}</div>
+            <div class="text-[10px] text-gray-500">{{ node.id }}</div>
+          </td>
+          <td class="px-2 py-2 text-gray-700 text-start capitalize">
+            {{ node.type || "N/A" }}
+          </td>
+          <td class="px-2 py-2 text-gray-700 text-start">
+            {{ node.gatewayId || "N/A" }}
+          </td>
+          <td class="px-2 py-2 text-center text-xs font-semibold uppercase">
+            <span :class="registeredClass(node.registered)">
+              {{ formatRegistered(node.registered) }}
+            </span>
+          </td>
+          <td class="px-2 py-2 text-gray-600 text-right">
+            {{ formatLastSeen(node.lastSeen ?? null) }}
+          </td>
+          <td class="px-2 py-2 text-center">
+            <div class="inline-flex items-center gap-1">
+              <button
+                type="button"
+                class="w-8 h-8 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 cursor-pointer"
+                title="Zoom to node"
+                aria-label="Zoom to node"
+                @click="handleZoomToNode(node)"
+              >
+                <BootstrapIcon name="geo-alt" class="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                class="w-8 h-8 inline-flex items-center justify-center rounded border border-gray-200 text-gray-600 cursor-pointer transition-colors duration-150 hover:bg-gray-50 hover:text-gray-700 hover:border-gray-300"
+                title="View node details"
+                aria-label="View node details"
+                @click.stop="openNodeDetail(node)"
+              >
+                <BootstrapIcon name="info-circle" class="w-3 h-3" />
+              </button>
+            </div>
+          </td>
+        </tr>
+      </template>
+
+      <template #empty> No nodes inside this area. </template>
+
+      <template #footer>
+        <span>Showing {{ areaNodesTotal }} entries.</span>
+      </template>
+    </DataBoxCard>
+  </a-drawer>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount, watch } from "vue";
 import DataBoxCard from "@/components/common/DataBoxCard.vue";
-import AreaNodesModal from "@/components/Modals/Maps/AreaNodesModal.vue";
 import BaseNodeDetailModal from "@/components/Modals/Devices/BaseNodeDetailModal.vue";
 import type { DeviceRow, NodeInfo } from "@/types/devices-control";
 import { useLoadDataRow } from "@/composables/DeviceRegistration/loadDataRow";
@@ -305,15 +388,29 @@ const enableMapAreasFetch = computed(() => props.enableMapAreasFetch);
 const hasExternalAreas = computed(() => props.mapManagedAreas !== undefined);
 const externalAreas = computed(() => props.mapManagedAreas ?? []);
 const deviceColumns = computed(() => (activeTab.value === "node" ? 4 : 3));
-const isAreaNodesModalOpen = ref(false);
 const selectedArea = ref<any | null>(null);
 const selectedAreaLabel = computed(() => {
   if (!selectedArea.value) return "";
   return selectedArea.value?.name || `Area ${selectedArea.value?.id ?? ""}`;
 });
+const areaNodesDrawerTitle = computed(() =>
+  selectedAreaLabel.value ? `Nodes in ${selectedAreaLabel.value}` : "Nodes in Area",
+);
+const isAreaNodesDrawerOpen = ref(false);
 const areaNodes = computed(() => {
   if (!selectedArea.value) return [];
   return filterNodesInArea(nodeRows.value, selectedArea.value);
+});
+
+const areaNodesPage = ref(1);
+const areaNodesPerPage = ref(resolvedDefaultPerPage);
+const areaNodesTotal = computed(() => areaNodes.value.length);
+const areaNodesLastPage = computed(() =>
+  Math.max(1, Math.ceil(areaNodesTotal.value / Math.max(1, areaNodesPerPage.value))),
+);
+const pagedAreaNodes = computed(() => {
+  const start = (areaNodesPage.value - 1) * areaNodesPerPage.value;
+  return areaNodes.value.slice(start, start + areaNodesPerPage.value);
 });
 
 const authStore = useAuthStore();
@@ -357,6 +454,12 @@ watch([areasTotal, areasLastPage], () => {
 watch([devicesTotal, devicesLastPage, activeTab], () => {
   if (devicesPage.value > devicesLastPage.value) {
     devicesPage.value = devicesLastPage.value;
+  }
+});
+
+watch([areaNodesTotal, areaNodesLastPage], () => {
+  if (areaNodesPage.value > areaNodesLastPage.value) {
+    areaNodesPage.value = areaNodesLastPage.value;
   }
 });
 
@@ -437,15 +540,16 @@ function handleZoomToNode(node: DeviceRow) {
 function handleShowAreaNodes(area: any) {
   if (!area) return;
   selectedArea.value = area;
+  areaNodesPage.value = 1;
   if (props.mapFocusOnListAction) {
     props.mapFocusArea?.(area);
   }
-  isAreaNodesModalOpen.value = true;
+  isAreaNodesDrawerOpen.value = true;
 }
 
 function clearSelectedArea() {
   selectedArea.value = null;
-  isAreaNodesModalOpen.value = false;
+  isAreaNodesDrawerOpen.value = false;
 }
 
 // Node Detail Modal Logic

@@ -60,9 +60,10 @@ export function normalizeSensorSeriesRows(
   rows: SensorQueryRow[],
   options: {
     maxPoints: number;
-    uiOffsetMs: number;
+    uiOffsetMs?: number;
   },
 ) {
+  const uiOffsetMs = options.uiOffsetMs ?? 0;
   const grouped: Record<string, { x: number; y: number }[]> = {};
 
   for (const row of rows) {
@@ -82,7 +83,7 @@ export function normalizeSensorSeriesRows(
 
     grouped[seriesName] ??= [];
     grouped[seriesName].push({
-      x: new Date(timestamp).getTime() - options.uiOffsetMs,
+      x: new Date(timestamp).getTime() - uiOffsetMs,
       y: value,
     });
   }
