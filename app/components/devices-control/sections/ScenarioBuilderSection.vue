@@ -42,7 +42,7 @@
           </button>
           <span v-if="isCanvasDirty" class="text-xs text-gray-400" aria-hidden="true">|</span>
           <button
-            v-if="isRunningFlow"
+            v-if="isFlowActive"
             type="button"
             class="inline-flex items-center gap-2 rounded border border-amber-200 px-3 py-1 text-xs text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
             :disabled="isStoppingFlow"
@@ -55,11 +55,11 @@
             v-else
             type="button"
             class="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="isRunningFlow || hasMissingActionNodes"
+            :disabled="isFlowActive || hasMissingActionNodes"
             @click="runFlow"
           >
             <BootstrapIcon name="play-fill" class="h-3 w-3" />
-            {{ isRunningFlow ? "Running..." : "Run" }}
+            {{ runButtonLabel }}
           </button>
         </div>
       </div>
@@ -416,6 +416,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "back"): void;
   (e: "save", payload: { nodes: any[]; edges: Edge[]; controlDefinition: any }): void;
+  (e: "runtime-state", payload: { workflowId: string; state: string; runId?: string | null }): void;
 }>();
 
 const palette = [
@@ -507,7 +508,6 @@ const isActionModalOpen = ref(false);
 const isConditionModalOpen = ref(false);
 const isConstantsModalOpen = ref(false);
 const isSavingNode = ref(false);
-const isRunningFlow = ref(false);
 const isStoppingFlow = ref(false);
 const isFlowVisible = ref(false);
 const activeNode = ref<Node<NodeData> | null>(null);
@@ -529,6 +529,7 @@ const workflowOverallStatus = computed(() => {
 });
 const queueStream = ref<EventSource | null>(null);
 const queueStreamBase = computed(() => (apiConfig.server || "").replace(/\/$/, ""));
+const currentWorkflowRunId = ref<string | null>(null);
 
 function pushWorkflowStep(step: {
   title: string;
@@ -558,6 +559,37 @@ function resetWorkflowSteps() {
   workflowErrorMessage.value = null;
 }
 
+function resolvePayloadRunId(payload: any) {
+  const runId = payload?.run_id ?? payload?.job?.run_id ?? null;
+  const text = String(runId ?? "").trim();
+  return text || null;
+}
+
+function resolvePayloadWorkflowId(payload: any) {
+  const workflowId = payload?.workflow_id ?? payload?.job?.workflow_id ?? null;
+  const text = String(workflowId ?? "").trim();
+  return text || null;
+}
+
+function shouldHandleWorkflowPayload(payload: any) {
+  const payloadWorkflowId = resolvePayloadWorkflowId(payload);
+  const activeWorkflowId = String(props.scenario.id ?? "").trim();
+  if (payloadWorkflowId && activeWorkflowId && payloadWorkflowId !== activeWorkflowId) {
+    return false;
+  }
+
+  const activeRunId = String(currentWorkflowRunId.value ?? "").trim();
+  if (!activeRunId) {
+    return true;
+  }
+
+  const payloadRunId = resolvePayloadRunId(payload);
+  if (!payloadRunId) {
+    return !payloadWorkflowId || payloadWorkflowId === activeWorkflowId;
+  }
+  return payloadRunId === activeRunId;
+}
+
 function formatStepTime(value?: string | null) {
   if (!value) return "--:--:--";
   const date = new Date(value);
@@ -571,6 +603,9 @@ function formatStepTime(value?: string | null) {
 }
 
 function handleQueueStatus(payload: any) {
+  if (!shouldHandleWorkflowPayload(payload)) {
+    return;
+  }
   const status = String(payload?.status ?? "");
   const job = payload?.job ?? {};
   const timeText = formatStepTime(payload?.ts);
@@ -618,6 +653,56 @@ function handleQueueStatus(payload: any) {
   }
 }
 
+function handleWorkflowStatus(payload: any) {
+  if (!shouldHandleWorkflowPayload(payload)) {
+    return;
+  }
+  const status = String(payload?.status ?? "").trim();
+  const timeText = formatStepTime(payload?.ts);
+  const runId = resolvePayloadRunId(payload);
+  if (runId) {
+    currentWorkflowRunId.value = runId;
+  }
+
+  switch (status) {
+    case "workflow_started":
+      emitRuntimeState("running");
+      pushWorkflowStep({
+        title: `Workflow Started (${timeText})`,
+        status: "finish",
+        description: "Workflow execution has started.",
+      });
+      break;
+    case "workflow_completed":
+      emitRuntimeState("idle");
+      pushWorkflowStep({
+        title: `Workflow Completed (${timeText})`,
+        status: "finish",
+        description: "Workflow execution completed.",
+      });
+      break;
+    case "workflow_stopped":
+      emitRuntimeState("idle");
+      pushWorkflowStep({
+        title: `Workflow Stopped (${timeText})`,
+        status: "finish",
+        description: "Workflow was stopped.",
+      });
+      break;
+    case "workflow_failed":
+      emitRuntimeState("error");
+      workflowErrorMessage.value = payload?.error ?? "Workflow failed.";
+      pushWorkflowStep({
+        title: `Workflow Failed (${timeText})`,
+        status: "error",
+        description: workflowErrorMessage.value,
+      });
+      break;
+    default:
+      break;
+  }
+}
+
 function disconnectQueueStream() {
   if (queueStream.value) {
     queueStream.value.close();
@@ -643,6 +728,10 @@ function connectQueueStream() {
     const payload = JSON.parse((event as MessageEvent).data ?? "{}");
     handleQueueStatus(payload);
   });
+  source.addEventListener("workflow-status", (event) => {
+    const payload = JSON.parse((event as MessageEvent).data ?? "{}");
+    handleWorkflowStatus(payload);
+  });
   source.onerror = () => {
     pushWorkflowStep({
       title: "Tracking Disconnected",
@@ -665,6 +754,19 @@ const conditionForm = ref({
 const isMetricNodesLoading = ref(false);
 const lastActionInputKind = ref<string | null>(null);
 const isCanvasDirty = ref(false);
+const workflowRuntimeState = ref<"idle" | "queued" | "running" | "stopping" | "error">("idle");
+const isFlowActive = computed(
+  () =>
+    workflowRuntimeState.value === "queued" ||
+    workflowRuntimeState.value === "running" ||
+    workflowRuntimeState.value === "stopping",
+);
+const runButtonLabel = computed(() => {
+  if (workflowRuntimeState.value === "queued") return "Queued...";
+  if (workflowRuntimeState.value === "running") return "Running...";
+  if (workflowRuntimeState.value === "stopping") return "Stopping...";
+  return "Run";
+});
 
 function markCanvasAsDirty() {
   isCanvasDirty.value = true;
@@ -672,6 +774,15 @@ function markCanvasAsDirty() {
 
 function markCanvasAsSaved() {
   isCanvasDirty.value = false;
+}
+
+function emitRuntimeState(state: "idle" | "queued" | "running" | "stopping" | "error") {
+  workflowRuntimeState.value = state;
+  emit("runtime-state", {
+    workflowId: String(props.scenario.id),
+    state,
+    runId: currentWorkflowRunId.value,
+  });
 }
 
 function normalizeControlInputType(value?: string | null) {
@@ -903,7 +1014,7 @@ function saveFlow() {
 
 async function runFlow() {
   if (!import.meta.client) return;
-  if (isRunningFlow.value) return;
+  if (isFlowActive.value) return;
   if (hasMissingActionNodes.value) {
     message.error("Cannot run because some actions no longer exist.");
     return;
@@ -914,22 +1025,24 @@ async function runFlow() {
     return;
   }
   resetWorkflowSteps();
-  isRunningFlow.value = true;
+  currentWorkflowRunId.value = null;
+  emitRuntimeState("queued");
   message.info("Scenario is starting...");
   try {
-    await runWorkflow(props.scenario.id, authorization);
-    const scenarioName = (props.scenario.name || "").trim() || "Scenario";
+    const result = await runWorkflow(props.scenario.id, authorization);
+    const runId = String(result?.data?.run_id ?? result?.run_id ?? "").trim();
+    currentWorkflowRunId.value = runId || null;
     pushWorkflowStep({
-      title: "Workflow Started",
+      title: "Workflow Queued",
       status: "finish",
-      description: `${scenarioName} has started.`,
+      description: "Workflow is queued.",
     });
     message.success("Scenario queued successfully.");
   } catch (error: any) {
+    emitRuntimeState("error");
     workflowErrorMessage.value = error?.message ?? "Failed to run scenario.";
     message.error(workflowErrorMessage.value);
   } finally {
-    isRunningFlow.value = false;
     isStoppingFlow.value = false;
   }
 }
@@ -943,14 +1056,17 @@ async function stopFlow() {
     return;
   }
   isStoppingFlow.value = true;
+  emitRuntimeState("stopping");
   try {
     await stopWorkflow(props.scenario.id, authorization);
+    currentWorkflowRunId.value = null;
+    emitRuntimeState("idle");
     message.success("Scenario stopped.");
   } catch (error: any) {
+    emitRuntimeState("error");
     message.error(error?.message ?? "Failed to stop scenario.");
   } finally {
     isStoppingFlow.value = false;
-    isRunningFlow.value = false;
   }
 }
 

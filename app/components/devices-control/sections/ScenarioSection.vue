@@ -8,6 +8,7 @@
         :definition="activeScenarioConfig.definition"
         @back="closeScenarioConfig"
         @save="handleScenarioDefinitionSave"
+        @runtime-state="handleBuilderRuntimeState"
       />
 
       <div
@@ -165,6 +166,8 @@
                         'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
                         getRuntimeStatus(row.id) === 'running'
                           ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                          : getRuntimeStatus(row.id) === 'queued'
+                            ? 'bg-cyan-50 text-cyan-700 border border-cyan-200'
                           : getRuntimeStatus(row.id) === 'stopping'
                             ? 'bg-amber-50 text-amber-700 border border-amber-200'
                             : getRuntimeStatus(row.id) === 'error'
@@ -184,7 +187,7 @@
                   <td class="px-2 py-2 text-center align-middle">
                     <div class="inline-flex items-center justify-center gap-2">
                       <button
-                        v-if="getRuntimeStatus(row.id) === 'running' || getRuntimeStatus(row.id) === 'stopping'"
+                        v-if="getRuntimeStatus(row.id) === 'queued' || getRuntimeStatus(row.id) === 'running' || getRuntimeStatus(row.id) === 'stopping'"
                         type="button"
                         class="w-8 h-8 inline-flex items-center justify-center rounded border border-amber-200 text-amber-600 hover:bg-amber-50 cursor-pointer"
                         @click="handleStopScenario(row)"
@@ -271,7 +274,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { message, Modal } from "ant-design-vue";
 import ScenarioFormModal from "@/components/Modals/Devices/ScenarioFormModal.vue";
 import ScenarioBuilderSection from "@/components/devices-control/sections/ScenarioBuilderSection.vue";
@@ -281,6 +284,7 @@ import AdvancedFilterPanel, {
 import DataBoxCard from "@/components/common/DataBoxCard.vue";
 import type { Section } from "@/types/devices-control";
 import { formatIotDateTime } from "~~/config/iot-time-format";
+import { apiConfig } from "~~/config/api";
 import { useAuthStore } from "~~/stores/auth";
 import {
   buildWorkflowListParams,
@@ -337,6 +341,9 @@ const scenarioRows = ref<ScenarioRow[]>([]);
 const scenarioPagination = ref({ page: 1, perPage: 10, lastPage: 1, total: 0 });
 const activeScenarioConfig = ref<ScenarioRow | null>(null);
 const runtimeStatusById = ref<Record<string, string>>({});
+const runToWorkflowId = ref<Record<string, string>>({});
+const workflowStatusStream = ref<EventSource | null>(null);
+const queueStreamBase = computed(() => (apiConfig.server || "").replace(/\/$/, ""));
 
 const isScenarioModalOpen = ref(false);
 const isScenarioEditMode = ref(false);
@@ -441,6 +448,8 @@ function setRuntimeStatus(id: string | number, status: string) {
 
 function formatRuntimeStatus(status: string) {
   switch (status) {
+    case "queued":
+      return "Queued";
     case "running":
       return "Running";
     case "stopping":
@@ -452,6 +461,77 @@ function formatRuntimeStatus(status: string) {
     default:
       return "Idle";
   }
+}
+
+function resolvePayloadWorkflowId(payload: any) {
+  const value = String(payload?.workflow_id ?? "").trim();
+  if (value) return value;
+  const runId = String(payload?.run_id ?? "").trim();
+  if (runId) {
+    return runToWorkflowId.value[runId] ?? "";
+  }
+  return "";
+}
+
+function applyWorkflowStatusPayload(payload: any) {
+  const workflowId = resolvePayloadWorkflowId(payload);
+  if (!workflowId) return;
+  const runId = String(payload?.run_id ?? "").trim();
+  if (runId) {
+    runToWorkflowId.value = {
+      ...runToWorkflowId.value,
+      [runId]: workflowId,
+    };
+  }
+
+  const status = String(payload?.status ?? "").trim();
+  if (status === "workflow_started") {
+    setRuntimeStatus(workflowId, "running");
+    return;
+  }
+  if (status === "workflow_completed" || status === "workflow_stopped") {
+    setRuntimeStatus(workflowId, "idle");
+    return;
+  }
+  if (status === "workflow_failed") {
+    setRuntimeStatus(workflowId, "error");
+  }
+}
+
+function disconnectWorkflowStatusStream() {
+  if (!workflowStatusStream.value) return;
+  workflowStatusStream.value.close();
+  workflowStatusStream.value = null;
+}
+
+function connectWorkflowStatusStream() {
+  if (!import.meta.client) return;
+  if (!queueStreamBase.value) return;
+  if (!authStore.authorizationHeader) return;
+
+  disconnectWorkflowStatusStream();
+  const source = new EventSource(`${queueStreamBase.value}/events/control-queue`);
+  source.addEventListener("workflow-status", (event) => {
+    const payload = JSON.parse((event as MessageEvent).data ?? "{}");
+    applyWorkflowStatusPayload(payload);
+  });
+  source.onerror = () => {
+    // keep UI stable, browser EventSource will retry automatically.
+  };
+  workflowStatusStream.value = source;
+}
+
+function handleBuilderRuntimeState(payload: { workflowId: string; state: string; runId?: string | null }) {
+  const workflowId = String(payload?.workflowId ?? "").trim();
+  if (!workflowId) return;
+  const runId = String(payload?.runId ?? "").trim();
+  if (runId) {
+    runToWorkflowId.value = {
+      ...runToWorkflowId.value,
+      [runId]: workflowId,
+    };
+  }
+  setRuntimeStatus(workflowId, payload.state || "idle");
 }
 
 function handleFilterModelUpdate(value: Record<string, string>) {
@@ -576,10 +656,16 @@ async function handleRunScenario(row: ScenarioRow) {
     return;
   }
   try {
-    setRuntimeStatus(row.id, "running");
-    await runWorkflow(row.id, authorization);
-    message.success("Scenario ran successfully.");
-    setRuntimeStatus(row.id, "idle");
+    setRuntimeStatus(row.id, "queued");
+    const result = await runWorkflow(row.id, authorization);
+    const runId = String(result?.data?.run_id ?? result?.run_id ?? "").trim();
+    if (runId) {
+      runToWorkflowId.value = {
+        ...runToWorkflowId.value,
+        [runId]: String(row.id),
+      };
+    }
+    message.success("Scenario queued successfully.");
   } catch (error: any) {
     message.error(error?.message ?? "Failed to run scenario.");
     setRuntimeStatus(row.id, "error");
@@ -597,7 +683,7 @@ async function handleStopScenario(row: ScenarioRow) {
     setRuntimeStatus(row.id, "stopping");
     await stopWorkflow(row.id, authorization);
     message.success("Scenario stopped.");
-    setRuntimeStatus(row.id, "stopped");
+    setRuntimeStatus(row.id, "idle");
   } catch (error: any) {
     message.error(error?.message ?? "Failed to stop scenario.");
     setRuntimeStatus(row.id, "error");
@@ -806,6 +892,11 @@ onMounted(() => {
   if (!import.meta.client) return;
   resetScenarioForm();
   fetchScenarios();
+  connectWorkflowStatusStream();
+});
+
+onBeforeUnmount(() => {
+  disconnectWorkflowStatusStream();
 });
 
 watch(
@@ -828,4 +919,15 @@ watch(searchKeyword, () => {
   scenarioPagination.value.page = 1;
   fetchScenarios();
 });
+
+watch(
+  () => authStore.authorizationHeader,
+  (authorization) => {
+    if (!authorization) {
+      disconnectWorkflowStatusStream();
+      return;
+    }
+    connectWorkflowStatusStream();
+  },
+);
 </script>

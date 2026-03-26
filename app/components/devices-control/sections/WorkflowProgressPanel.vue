@@ -69,4 +69,8 @@ defineEmits<{
 :deep(.workflow-progress-steps .ant-steps-item-error .ant-steps-icon-dot) {
   background-color: #2563eb !important;
 }
+
+:deep(.workflow-progress-steps .ant-steps-item-tail::after) {
+  background-color: #cbd5e1 !important;
+}
 </style>
