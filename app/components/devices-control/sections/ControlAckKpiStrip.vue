@@ -1,5 +1,5 @@
 <template>
-  <article class="bg-white border border-slate-200 rounded p-4">
+  <article>
     <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
       <div class="rounded border border-emerald-100 bg-emerald-50 p-3">
         <p class="text-[11px] uppercase tracking-wide text-emerald-700">Success Rate</p>

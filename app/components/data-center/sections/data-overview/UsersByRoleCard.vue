@@ -110,7 +110,11 @@ const userRoleChartOptions = computed<ApexOptions>(() => ({
       fontSize: "11px",
       fontWeight: 700,
     },
-    formatter: (value: number) => `${Math.round(value)}%`,
+    formatter: (_value: number, opts?: { seriesIndex?: number; w?: { config?: { series?: Array<number | string> } } }) => {
+      const seriesIndex = opts?.seriesIndex ?? -1;
+      const rawValue = opts?.w?.config?.series?.[seriesIndex];
+      return String(Number(rawValue ?? 0));
+    },
     dropShadow: {
       enabled: false,
     },

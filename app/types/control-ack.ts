@@ -32,6 +32,7 @@ export type ControlLogRow = {
   requested_at?: string | null;
   requested_at_ms?: number | null;
   response_deadline_at?: string | null;
+  dispatched_at?: string | null;
 };
 
 export type ControlLogFilterState = {

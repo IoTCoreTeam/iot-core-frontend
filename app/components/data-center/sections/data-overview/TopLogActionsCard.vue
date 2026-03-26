@@ -2,8 +2,8 @@
   <article class="min-h-[360px] bg-white border border-slate-200 rounded p-4">
     <div class="flex items-center justify-between">
       <div>
-        <p class="text-sm font-semibold text-slate-900">Logs Monitoring</p>
-        <p class="text-xs text-slate-500">Total logs per week</p>
+        <p class="text-sm font-semibold text-slate-900">Top Log Actions</p>
+        <p class="text-xs text-slate-500">Most frequent actions in last 7 days</p>
       </div>
     </div>
 
@@ -13,8 +13,8 @@
           type="bar"
           height="100%"
           width="100%"
-          :options="logsChartOptions"
-          :series="normalizedLogsSeries"
+          :options="chartOptions"
+          :series="normalizedSeries"
         />
       </ClientOnly>
     </div>
@@ -27,9 +27,6 @@ import { computed, defineAsyncComponent, toRefs } from "vue";
 
 const ApexChart = defineAsyncComponent(() => import("vue3-apexcharts"));
 
-const LOG_SERIES_ORDER = ["Error", "Warning", "Info"] as const;
-const LOG_SERIES_COLORS = ["#ef4444", "#f59e0b", "#2563eb"] as const;
-
 const props = defineProps<{
   categories: string[];
   series: { name: string; data: number[] }[];
@@ -37,37 +34,43 @@ const props = defineProps<{
 
 const { categories, series } = toRefs(props);
 
-const normalizedCategories = computed(() => categories.value ?? []);
+const normalizedSeries = computed(() => {
+  if (!Array.isArray(series.value) || series.value.length === 0) {
+    return [{ name: "Count", data: [] }];
+  }
 
-const normalizedLogsSeries = computed(() => {
-  const byName = new Map(
-    (series.value ?? []).map((item) => [String(item?.name ?? "").toLowerCase(), item]),
-  );
-
-  return LOG_SERIES_ORDER.map((seriesName) => {
-    const found = byName.get(seriesName.toLowerCase());
-    return {
-      name: seriesName,
-      data: Array.isArray(found?.data) ? found.data : [],
-    };
-  });
+  return series.value.map((item) => ({
+    name: item?.name || "Count",
+    data: Array.isArray(item?.data) ? item.data : [],
+  }));
 });
 
-const logsChartOptions = computed<ApexOptions>(() => ({
+const normalizedCategories = computed(() =>
+  (categories.value ?? []).map((value) =>
+    String(value)
+      .replace(/\./g, " ")
+      .replace(/_/g, " ")
+      .trim(),
+  ),
+);
+
+const chartOptions = computed<ApexOptions>(() => ({
   chart: {
     type: "bar" as const,
-    stacked: true,
     toolbar: { show: false },
     fontFamily: "inherit",
     foreColor: "#64748b",
   },
-  colors: [...LOG_SERIES_COLORS],
+  colors: ["#2563eb"],
   plotOptions: {
     bar: {
       horizontal: true,
       borderRadius: 4,
       barHeight: "58%",
     },
+  },
+  dataLabels: {
+    enabled: false,
   },
   xaxis: {
     categories: normalizedCategories.value,
@@ -90,29 +93,18 @@ const logsChartOptions = computed<ApexOptions>(() => ({
         colors: "#475569",
         fontSize: "11px",
       },
+      formatter: (value: string) => value,
     },
   },
   grid: {
     borderColor: "#e2e8f0",
     strokeDashArray: 4,
   },
-  dataLabels: {
-    enabled: false,
-  },
   legend: {
-    show: true,
-    position: "top" as const,
-    horizontalAlign: "right" as const,
-    fontSize: "12px",
-    markers: {
-      size: 8,
-    },
-    labels: {
-      colors: "#475569",
-    },
+    show: false,
   },
   noData: {
-    text: "No logs",
+    text: "No action logs",
     align: "center",
     verticalAlign: "middle",
     style: {

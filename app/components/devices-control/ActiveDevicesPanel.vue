@@ -192,103 +192,106 @@
     @close="closeNodeDetail"
   />
 
-  <a-drawer
-    :open="isAreaNodesDrawerOpen"
+  <BaseModal
+    :model-value="isAreaNodesDrawerOpen"
     :title="areaNodesDrawerTitle"
-    placement="right"
-    :width="980"
-    @close="clearSelectedArea"
+    max-width="max-w-6xl"
+    panel-class="p-6 shadow-xl"
+    @request-close="clearSelectedArea"
   >
-    <DataBoxCard
-      class="w-full border-0 shadow-none"
-      :is-loading="false"
-      :columns="6"
-      :has-data="pagedAreaNodes.length > 0"
-      :elevated="false"
-      :padded="false"
-      :scroll-body="true"
-      :pagination="{
-        page: areaNodesPage,
-        perPage: areaNodesPerPage,
-        lastPage: areaNodesLastPage,
-        total: areaNodesTotal,
-      }"
-      @prev-page="areaNodesPage = Math.max(1, areaNodesPage - 1)"
-      @next-page="areaNodesPage = Math.min(areaNodesLastPage, areaNodesPage + 1)"
-      @change-per-page="(value) => { areaNodesPerPage = value; areaNodesPage = 1; }"
-    >
-      <template #head>
-        <tr class="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-500">
-          <th class="px-2 py-2 font-semibold text-start">Name</th>
-          <th class="px-2 py-2 font-semibold text-start">Type</th>
-          <th class="px-2 py-2 font-semibold text-start">Gateway</th>
-          <th class="px-2 py-2 font-semibold text-center">Registered</th>
-          <th class="px-2 py-2 font-semibold text-right">Last Seen</th>
-          <th class="px-2 py-2 font-semibold text-center">Actions</th>
-        </tr>
-      </template>
+    <div class="max-h-[72vh] overflow-auto">
+      <DataBoxCard
+        class="w-full border-0 shadow-none"
+        :is-loading="false"
+        :columns="6"
+        :has-data="pagedAreaNodes.length > 0"
+        :elevated="false"
+        :padded="false"
+        :scroll-body="true"
+        :pagination="{
+          page: areaNodesPage,
+          perPage: areaNodesPerPage,
+          lastPage: areaNodesLastPage,
+          total: areaNodesTotal,
+        }"
+        @prev-page="areaNodesPage = Math.max(1, areaNodesPage - 1)"
+        @next-page="areaNodesPage = Math.min(areaNodesLastPage, areaNodesPage + 1)"
+        @change-per-page="(value) => { areaNodesPerPage = value; areaNodesPage = 1; }"
+      >
+        <template #head>
+          <tr class="bg-gray-50 border-b border-gray-200 text-[10px] text-gray-500">
+            <th class="px-2 py-2 font-semibold text-start">Name</th>
+            <th class="px-2 py-2 font-semibold text-start">Type</th>
+            <th class="px-2 py-2 font-semibold text-start">Gateway</th>
+            <th class="px-2 py-2 font-semibold text-center">Registered</th>
+            <th class="px-2 py-2 font-semibold text-right">Last Seen</th>
+            <th class="px-2 py-2 font-semibold text-center">Actions</th>
+          </tr>
+        </template>
 
-      <template #default>
-        <tr
-          v-for="node in pagedAreaNodes"
-          :key="node.id"
-          class="hover:bg-gray-50 transition-colors text-xs border-b border-gray-100"
-        >
-          <td class="px-2 py-2 text-gray-700 text-start">
-            <div class="font-medium">{{ node.name }}</div>
-            <div class="text-[10px] text-gray-500">{{ node.id }}</div>
-          </td>
-          <td class="px-2 py-2 text-gray-700 text-start capitalize">
-            {{ node.type || "N/A" }}
-          </td>
-          <td class="px-2 py-2 text-gray-700 text-start">
-            {{ node.gatewayId || "N/A" }}
-          </td>
-          <td class="px-2 py-2 text-center text-xs font-semibold uppercase">
-            <span :class="registeredClass(node.registered)">
-              {{ formatRegistered(node.registered) }}
-            </span>
-          </td>
-          <td class="px-2 py-2 text-gray-600 text-right">
-            {{ formatLastSeen(node.lastSeen ?? null) }}
-          </td>
-          <td class="px-2 py-2 text-center">
-            <div class="inline-flex items-center gap-1">
-              <button
-                type="button"
-                class="w-8 h-8 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 cursor-pointer"
-                title="Zoom to node"
-                aria-label="Zoom to node"
-                @click="handleZoomToNode(node)"
-              >
-                <BootstrapIcon name="geo-alt" class="w-3 h-3" />
-              </button>
-              <button
-                type="button"
-                class="w-8 h-8 inline-flex items-center justify-center rounded border border-gray-200 text-gray-600 cursor-pointer transition-colors duration-150 hover:bg-gray-50 hover:text-gray-700 hover:border-gray-300"
-                title="View node details"
-                aria-label="View node details"
-                @click.stop="openNodeDetail(node)"
-              >
-                <BootstrapIcon name="info-circle" class="w-3 h-3" />
-              </button>
-            </div>
-          </td>
-        </tr>
-      </template>
+        <template #default>
+          <tr
+            v-for="node in pagedAreaNodes"
+            :key="node.id"
+            class="hover:bg-gray-50 transition-colors text-xs border-b border-gray-100"
+          >
+            <td class="px-2 py-2 text-gray-700 text-start">
+              <div class="font-medium">{{ node.name }}</div>
+              <div class="text-[10px] text-gray-500">{{ node.id }}</div>
+            </td>
+            <td class="px-2 py-2 text-gray-700 text-start capitalize">
+              {{ node.type || "N/A" }}
+            </td>
+            <td class="px-2 py-2 text-gray-700 text-start">
+              {{ node.gatewayId || "N/A" }}
+            </td>
+            <td class="px-2 py-2 text-center text-xs font-semibold uppercase">
+              <span :class="registeredClass(node.registered)">
+                {{ formatRegistered(node.registered) }}
+              </span>
+            </td>
+            <td class="px-2 py-2 text-gray-600 text-right">
+              {{ formatLastSeen(node.lastSeen ?? null) }}
+            </td>
+            <td class="px-2 py-2 text-center">
+              <div class="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  class="w-8 h-8 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 cursor-pointer"
+                  title="Zoom to node"
+                  aria-label="Zoom to node"
+                  @click="handleZoomToNode(node)"
+                >
+                  <BootstrapIcon name="geo-alt" class="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  class="w-8 h-8 inline-flex items-center justify-center rounded border border-gray-200 text-gray-600 cursor-pointer transition-colors duration-150 hover:bg-gray-50 hover:text-gray-700 hover:border-gray-300"
+                  title="View node details"
+                  aria-label="View node details"
+                  @click.stop="openNodeDetail(node)"
+                >
+                  <BootstrapIcon name="info-circle" class="w-3 h-3" />
+                </button>
+              </div>
+            </td>
+          </tr>
+        </template>
 
-      <template #empty> No nodes inside this area. </template>
+        <template #empty> No nodes inside this area. </template>
 
-      <template #footer>
-        <span>Showing {{ areaNodesTotal }} entries.</span>
-      </template>
-    </DataBoxCard>
-  </a-drawer>
+        <template #footer>
+          <span>Showing {{ areaNodesTotal }} entries.</span>
+        </template>
+      </DataBoxCard>
+    </div>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount, watch } from "vue";
 import DataBoxCard from "@/components/common/DataBoxCard.vue";
+import BaseModal from "@/components/Modals/BaseModal.vue";
 import BaseNodeDetailModal from "@/components/Modals/Devices/BaseNodeDetailModal.vue";
 import type { DeviceRow, NodeInfo } from "@/types/devices-control";
 import { useLoadDataRow } from "@/composables/DeviceRegistration/loadDataRow";

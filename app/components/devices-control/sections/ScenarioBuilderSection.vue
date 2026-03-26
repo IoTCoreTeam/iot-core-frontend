@@ -20,8 +20,8 @@
             class="inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
             @click="resetFlow"
           >
-            <BootstrapIcon name="arrow-counterclockwise" class="h-3 w-3" />
-            Reset
+            <BootstrapIcon name="trash" class="h-3 w-3" />
+            Remove All
           </button>
           <button
             type="button"
@@ -87,41 +87,14 @@
           </span>
         </div>
       </div>
-      <div class="mt-4 rounded border border-slate-200 bg-slate-50 px-4 py-3">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div class="text-xs font-semibold bg-white">Workflow Progress</div>
-          <button
-            type="button"
-            class="rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 hover:text-slate-700"
-            @click="resetWorkflowSteps"
-            aria-label="Clear workflow steps"
-            title="Clear"
-          >
-            <BootstrapIcon name="trash" class="h-3 w-3" />
-          </button>
-        </div>
-        <div class="mt-3 text-[11px]">
-          <a-steps
-            :current="currentWorkflowStep"
-            size="small"
-            :status="workflowOverallStatus"
-            direction="vertical"
-            :progress-dot="true"
-            class="text-[11px]"
-          >
-            <a-step
-              v-for="step in workflowSteps"
-              :key="step.key"
-              :title="step.title"
-              :status="step.status"
-              :description="step.description"
-            />
-          </a-steps>
-          <div v-if="workflowErrorMessage" class="mt-2 text-[11px] text-red-600">
-            {{ workflowErrorMessage }}
-          </div>
-        </div>
-      </div>
+      <WorkflowProgressPanel
+        class="mt-4"
+        :workflow-steps="workflowSteps"
+        :current-workflow-step="currentWorkflowStep"
+        :workflow-overall-status="workflowOverallStatus"
+        :workflow-error-message="workflowErrorMessage"
+        @clear="resetWorkflowSteps"
+      />
     </div>
 
     <div
@@ -394,7 +367,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { message, Modal } from "ant-design-vue";
 import {
   VueFlow,
@@ -416,6 +389,7 @@ import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 import BaseModal from "@/components/Modals/BaseModal.vue";
 import LoadingState from "@/components/common/LoadingState.vue";
+import WorkflowProgressPanel from "@/components/devices-control/sections/WorkflowProgressPanel.vue";
 import { apiConfig } from "~~/config/api";
 import { useAuthStore } from "~~/stores/auth";
 import { runWorkflow, stopWorkflow } from "@/composables/Scenario/handleWorkflow";
@@ -537,28 +511,146 @@ const isRunningFlow = ref(false);
 const isStoppingFlow = ref(false);
 const isFlowVisible = ref(false);
 const activeNode = ref<Node<NodeData> | null>(null);
-const workflowSteps = ref([
+const workflowSteps = ref<
   {
-    key: "stream-disabled",
-    title: "Workflow progress stream is temporarily disabled",
-    status: "process" as const,
-    description: "Only run/stop commands are active.",
-  },
-]);
+    key: string;
+    title: string;
+    status: "wait" | "process" | "finish" | "error";
+    description?: string;
+  }[]
+>([]);
 const currentWorkflowStep = ref(0);
 const workflowErrorMessage = ref<string | null>(null);
-const workflowOverallStatus = computed(() => "process");
+const workflowOverallStatus = computed(() => {
+  if (workflowSteps.value.some((step) => step.status === "error")) {
+    return "error";
+  }
+  return "process";
+});
+const queueStream = ref<EventSource | null>(null);
+const queueStreamBase = computed(() => (apiConfig.server || "").replace(/\/$/, ""));
+
+function pushWorkflowStep(step: {
+  title: string;
+  status: "wait" | "process" | "finish" | "error";
+  description?: string;
+}) {
+  workflowSteps.value.push({
+    key: `step-${Date.now()}-${workflowSteps.value.length}`,
+    title: step.title,
+    status: step.status,
+    description: step.description,
+  });
+  if (workflowSteps.value.length > 80) {
+    workflowSteps.value.splice(0, workflowSteps.value.length - 80);
+  }
+  currentWorkflowStep.value = Math.max(0, workflowSteps.value.length - 1);
+}
+
 function resetWorkflowSteps() {
-  workflowSteps.value = [
-    {
-      key: "stream-disabled",
-      title: "Workflow progress stream is temporarily disabled",
-      status: "process",
-      description: "Only run/stop commands are active.",
-    },
-  ];
+  workflowSteps.value = [];
+  pushWorkflowStep({
+    title: "Command Tracking",
+    status: "process",
+    description: "Listening for real-time command status updates.",
+  });
   currentWorkflowStep.value = 0;
   workflowErrorMessage.value = null;
+}
+
+function formatStepTime(value?: string | null) {
+  if (!value) return "--:--:--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--:--:--";
+  return date.toLocaleTimeString("vi-VN", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function handleQueueStatus(payload: any) {
+  const status = String(payload?.status ?? "");
+  const job = payload?.job ?? {};
+  const timeText = formatStepTime(payload?.ts);
+  const controlTarget = [job?.gateway_id, job?.node_id, job?.device]
+    .filter(Boolean)
+    .join(" / ");
+  const stateRaw = String(job?.state ?? "").trim().toUpperCase();
+  const stateText = stateRaw || "RUN";
+  const durationSeconds =
+    Number.isFinite(Number(job?.delayMs)) && Number(job?.delayMs) > 0
+      ? Math.round(Number(job.delayMs) / 1000)
+      : null;
+  const commandMeta =
+    durationSeconds && durationSeconds > 0
+      ? `(${stateText}, ${durationSeconds}s)`
+      : `(${stateText})`;
+  const targetText = controlTarget
+    ? `${controlTarget} ${commandMeta}`
+    : `Control command ${commandMeta}`;
+  switch (status) {
+    case "dispatched":
+      pushWorkflowStep({
+        title: `Command Started (${timeText})`,
+        status: "process",
+        description: targetText,
+      });
+      break;
+    case "completed":
+      pushWorkflowStep({
+        title: `Command Finished (${timeText})`,
+        status: "finish",
+        description: targetText,
+      });
+      break;
+    case "failed":
+      workflowErrorMessage.value = payload?.error ?? "Command failed.";
+      pushWorkflowStep({
+        title: `Command Finished (${timeText})`,
+        status: "error",
+        description: `${targetText} - failed: ${workflowErrorMessage.value}`,
+      });
+      break;
+    default:
+      break;
+  }
+}
+
+function disconnectQueueStream() {
+  if (queueStream.value) {
+    queueStream.value.close();
+    queueStream.value = null;
+  }
+}
+
+function connectQueueStream() {
+  if (!import.meta.client) return;
+  if (!queueStreamBase.value) return;
+  if (!authStore.authorizationHeader) return;
+  disconnectQueueStream();
+  const endpoint = `${queueStreamBase.value}/events/control-queue`;
+  const source = new EventSource(endpoint);
+  source.addEventListener("ready", () => {
+    pushWorkflowStep({
+      title: "Tracking Connected",
+      status: "finish",
+      description: "Command status will update automatically.",
+    });
+  });
+  source.addEventListener("control-queue-status", (event) => {
+    const payload = JSON.parse((event as MessageEvent).data ?? "{}");
+    handleQueueStatus(payload);
+  });
+  source.onerror = () => {
+    pushWorkflowStep({
+      title: "Tracking Disconnected",
+      status: "error",
+      description: "Unable to receive new status from server.",
+    });
+  };
+  queueStream.value = source;
 }
 const actionForm = ref({
   control_url_id: "",
@@ -823,9 +915,15 @@ async function runFlow() {
   }
   resetWorkflowSteps();
   isRunningFlow.value = true;
-  message.info("Scenario is starting (progress stream disabled)...");
+  message.info("Scenario is starting...");
   try {
     await runWorkflow(props.scenario.id, authorization);
+    const scenarioName = (props.scenario.name || "").trim() || "Scenario";
+    pushWorkflowStep({
+      title: "Workflow Started",
+      status: "finish",
+      description: `${scenarioName} has started.`,
+    });
     message.success("Scenario queued successfully.");
   } catch (error: any) {
     workflowErrorMessage.value = error?.message ?? "Failed to run scenario.";
@@ -1117,6 +1215,8 @@ async function fetchMetricNodes() {
 
 onMounted(() => {
   if (!import.meta.client) return;
+  resetWorkflowSteps();
+  connectQueueStream();
   fetchMetricNodes();
   fetchControlUrls();
   if (props.definition && !hasHydrated.value) {
@@ -1126,6 +1226,10 @@ onMounted(() => {
   setTimeout(() => {
     isFlowVisible.value = true;
   }, 1000);
+});
+
+onBeforeUnmount(() => {
+  disconnectQueueStream();
 });
 
 watch(
@@ -1159,6 +1263,17 @@ watch(
 watch(hasLoadedControlUrls, () => {
   nodes.value.forEach((node) => updateNodeLabel(node));
 });
+
+watch(
+  () => authStore.authorizationHeader,
+  (authorization) => {
+    if (!authorization) {
+      disconnectQueueStream();
+      return;
+    }
+    connectQueueStream();
+  },
+);
 
 const hasHydrated = ref(false);
 
@@ -1216,4 +1331,5 @@ function validateConditionBranches() {
 :deep(.scenario-flow .scenario-node--missing .vue-flow__node__label) {
   white-space: pre-line;
 }
+
 </style>
