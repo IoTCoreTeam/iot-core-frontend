@@ -221,7 +221,7 @@ export function useScenarioWorkflowRuntime(params: {
         pushWorkflowStep({
           title: `Workflow Failed (${timeText})`,
           status: "error",
-          description: workflowErrorMessage.value,
+          description: workflowErrorMessage.value ?? undefined,
         });
         break;
       default:
@@ -297,7 +297,6 @@ export function useScenarioWorkflowRuntime(params: {
           ? "Workflow is queued (devices will be turned off first)."
           : "Workflow is queued (keep current device states).",
       });
-      message.success("Scenario queued successfully.");
     } catch (error: any) {
       emitRuntimeState("error");
       workflowErrorMessage.value = error?.message ?? "Failed to run scenario.";

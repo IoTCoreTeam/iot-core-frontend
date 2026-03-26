@@ -710,7 +710,6 @@ async function handleRunScenario(row: ScenarioRow) {
         [runId]: String(row.id),
       };
     }
-    message.success("Scenario queued successfully.");
   } catch (error: any) {
     message.error(error?.message ?? "Failed to run scenario.");
     setRuntimeStatus(row.id, "error");
