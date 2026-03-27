@@ -409,7 +409,12 @@ async function fetchAnalogSignal(controlUrlId: string) {
     if (!response.ok) {
       throw new Error(payload?.message ?? "Failed to load analog signal.");
     }
-    analogSignal.value = payload?.data ?? null;
+    const rows = Array.isArray(payload?.data?.data)
+      ? payload.data.data
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : [];
+    analogSignal.value = rows[0] ?? null;
     hydrateAnalogForm(analogSignal.value);
   } catch (error: any) {
     message.error(error?.message ?? "Failed to load analog signal.");

@@ -2,7 +2,7 @@
   <transition name="modal-overlay" appear>
     <div
       v-if="isVisible"
-      class="fixed inset-0 flex justify-center z-[9999] pt-6"
+      class="fixed inset-0 flex justify-center z-[9999] pt-4  "
     >
       <div class="absolute inset-0 bg-black/30" @click="handleBackdropClick" />
 

@@ -86,7 +86,11 @@
                       <input
                         v-model="deviceSearchKeyword"
                         type="text"
-                        placeholder="Search device, batch, note..."
+                        :placeholder="
+                          activeDeviceTab === 'command_setup'
+                            ? 'Search...'
+                            : 'Search device, batch, note...'
+                        "
                         class="pl-5 pr-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-gray-400 focus:border-gray-400 bg-white w-60 text-xs cursor-text"
                       />
                       <BootstrapIcon
@@ -95,9 +99,10 @@
                       />
                     </div>
 
+            
                     <button
                       @click="refreshDevices"
-                      class="inline-flex items-center bg-gray-100 hover:bg-gray-200 text-gray-700 rounded px-3 py-1 text-xs border border-gray-300"
+                      class="inline-flex items-center bg-gray-50 hover:bg-gray-100 text-gray-600 rounded px-3 py-1 text-xs border border-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
                       :disabled="isDeviceLoading"
                     >
                       <BootstrapIcon
@@ -108,8 +113,19 @@
                       {{ isDeviceLoading ? "Refreshing..." : "Refresh" }}
                     </button>
                     <button
+                      v-if="activeDeviceTab === 'command_setup'"
                       type="button"
                       class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1 text-xs"
+                      :disabled="isDeviceLoading"
+                      @click="openCommandSetupModal"
+                    >
+                      <BootstrapIcon name="plus-lg" class="w-3 h-3 mr-1" />
+                      Add
+                    </button>
+                    <button
+                      type="button"
+                      class="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1 text-xs"
+                      v-if="activeDeviceTab !== 'command_setup'"
                       :disabled="isDeviceLoading || !filteredDeviceRows.length"
                       @click="exportDevices"
                     >
@@ -161,14 +177,26 @@
                         <template v-else-if="column.key === 'type'">
                           <p class="text-xs capitalize">{{ row.type || "N/A" }}</p>
                         </template>
+                        <template v-else-if="column.key === 'nodeType'">
+                          <p class="text-xs capitalize">{{ row.nodeType || "N/A" }}</p>
+                        </template>
                         <template v-else-if="column.key === 'controllerId'">
                           <p class="text-xs">{{ row.controllerId || "N/A" }}</p>
+                        </template>
+                        <template v-else-if="column.key === 'controlUrlId'">
+                          <p class="text-xs">{{ row.controlUrlId || "N/A" }}</p>
+                        </template>
+                        <template v-else-if="column.key === 'nodeId'">
+                          <p class="text-xs">{{ row.nodeId || "N/A" }}</p>
                         </template>
                         <template v-else-if="column.key === 'inputType'">
                           <p class="text-xs capitalize">{{ row.inputType || "N/A" }}</p>
                         </template>
                         <template v-else-if="column.key === 'url'">
                           <p class="text-xs truncate">{{ row.url || "N/A" }}</p>
+                        </template>
+                        <template v-else-if="column.key === 'command'">
+                          <p class="text-xs truncate">{{ displayCommandValue(row.command) }}</p>
                         </template>
                         <template v-else-if="column.key === 'gatewayId'">
                           <p class="text-xs">{{ row.gatewayId || "N/A" }}</p>
@@ -244,8 +272,46 @@
                               <BootstrapIcon name="link-45deg" class="w-3 h-3" />
                               <span class="sr-only">Add Control URL</span>
                             </button>
+                            <template v-if="activeDeviceTab === 'command_setup'">
+                              <button
+                                type="button"
+                                :class="infoButtonClass"
+                                title="View command details"
+                                @click.stop="openCommandSetupDetail(row)"
+                              >
+                                <BootstrapIcon name="info-circle" class="w-3 h-3" />
+                                <span class="sr-only">Command Details</span>
+                              </button>
+                              <button
+                                v-if="canEditCommandSetup(row)"
+                                type="button"
+                                class="w-8 h-8 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                                :disabled="isDeviceLoading"
+                                title="Edit Command Setup"
+                                @click.stop="openEditCommandSetupRow(row)"
+                              >
+                                <BootstrapIcon name="pencil-square" class="w-3 h-3" />
+                                <span class="sr-only">Edit Command Setup</span>
+                              </button>
+                              <button
+                                v-if="canDeleteCommandSetup(row)"
+                                type="button"
+                                class="w-8 h-8 inline-flex items-center justify-center rounded border border-red-200 text-red-600 hover:bg-red-50 cursor-pointer"
+                                :class="{
+                                  'opacity-50 cursor-not-allowed':
+                                    isDeletingCommandSetup(row) || isDeviceLoading,
+                                }"
+                                :disabled="isDeletingCommandSetup(row) || isDeviceLoading"
+                                :aria-busy="isDeletingCommandSetup(row) || isDeviceLoading"
+                                title="Delete Command Setup"
+                                @click.stop="handleDeleteCommandSetup(row)"
+                              >
+                                <BootstrapIcon name="trash" class="w-3 h-3" />
+                                <span class="sr-only">Delete Command Setup</span>
+                              </button>
+                            </template>
                             <template
-                              v-if="
+                              v-else-if="
                                 activeDeviceTab !== 'registered' &&
                                 activeDeviceTab !== 'registered_control_urls' &&
                                 row.registered === false
@@ -291,6 +357,24 @@
                               </button>
                             </template>
                             <template v-else-if="activeDeviceTab === 'registered_control_urls'">
+                              <button
+                                type="button"
+                                :class="infoButtonClass"
+                                title="View Control URL details"
+                                @click.stop="openRegisteredControlUrlDetail(row)"
+                              >
+                                <BootstrapIcon name="info-circle" class="w-3 h-3" />
+                                <span class="sr-only">Control URL Details</span>
+                              </button>
+                              <button
+                                type="button"
+                                class="w-8 h-8 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 cursor-pointer"
+                                title="Edit Control URL"
+                                @click.stop="openRegisteredControlUrlEdit(row)"
+                              >
+                                <BootstrapIcon name="pencil-square" class="w-3 h-3" />
+                                <span class="sr-only">Edit Control URL</span>
+                              </button>
                               <button
                                 type="button"
                                 class="w-8 h-8 inline-flex items-center justify-center rounded border border-red-200 text-red-600 hover:bg-red-50 cursor-pointer"
@@ -426,7 +510,13 @@
                     </transition>
                   </template>
                 </template>
-                <template #empty> No devices to display yet. </template>
+                <template #empty>
+                  {{
+                    activeDeviceTab === "command_setup"
+                      ? "No command setup found."
+                      : "No devices to display yet."
+                  }}
+                </template>
 
                 <template #footer>
                   <span
@@ -459,6 +549,158 @@
       @update:modelValue="isNodeDetailOpen = $event"
       @close="closeNodeDetail"
     />
+    <RegisteredControlUrlDetailModal
+      :model-value="isRegisteredControlUrlDetailOpen"
+      :row="selectedRegisteredControlUrl"
+      @close="closeRegisteredControlUrlDetail"
+    />
+    <CommandDetailModal
+      :model-value="isCommandSetupDetailOpen"
+      :row="selectedCommandSetupRow"
+      @close="closeCommandSetupDetail"
+    />
+    <BaseModal
+      :model-value="isRegisteredControlUrlEditOpen"
+      title="Edit Registered Control URL"
+      max-width="max-w-2xl"
+      panel-class="p-5 shadow-xl"
+      @request-close="closeRegisteredControlUrlEdit"
+    >
+      <div class="space-y-3 text-xs">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="flex flex-col gap-1">
+            <label class="text-gray-600 font-medium">Controller ID</label>
+            <input
+              v-model="registeredControlUrlEditForm.controller_id"
+              type="text"
+              class="border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-gray-600 font-medium">Node External ID</label>
+            <input
+              :value="registeredControlUrlEditForm.node_external_id"
+              type="text"
+              class="border border-gray-300 rounded px-2 py-1.5 bg-gray-50 text-gray-500"
+              disabled
+            />
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="flex flex-col gap-1">
+            <label class="text-gray-600 font-medium">Control URL Name</label>
+            <input
+              v-model="registeredControlUrlEditForm.name"
+              type="text"
+              class="border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-gray-600 font-medium">Input Type</label>
+            <input
+              v-model="registeredControlUrlEditForm.input_type"
+              type="text"
+              class="border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            />
+          </div>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-gray-600 font-medium">URL</label>
+          <input
+            v-model="registeredControlUrlEditForm.url"
+            type="text"
+            class="border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            class="px-3 py-1.5 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+            :disabled="isSavingRegisteredControlUrlEdit"
+            @click="closeRegisteredControlUrlEdit"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            :disabled="isSavingRegisteredControlUrlEdit"
+            @click="saveRegisteredControlUrlEdit"
+          >
+            {{ isSavingRegisteredControlUrlEdit ? "Saving..." : "Update" }}
+          </button>
+        </div>
+      </template>
+    </BaseModal>
+    <BaseModal
+      :model-value="isCommandSetupModalOpen"
+      :title="isEditingCommandSetup ? 'Edit Command Setup' : 'Add Command Setup'"
+      max-width="max-w-2xl"
+      panel-class="p-5 shadow-xl"
+      @request-close="closeCommandSetupModal"
+      @after-leave="resetCommandSetupForm"
+    >
+      <div class="space-y-3 text-xs">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="flex flex-col gap-1">
+            <label class="text-gray-600 font-medium">Control URL</label>
+            <select
+              v-model="commandSetupForm.control_url_id"
+              class="border border-gray-300 rounded px-2 py-1.5 bg-white focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            >
+              <option value="">Select control URL</option>
+              <option
+                v-for="option in controlUrlOptions"
+                :key="option.id"
+                :value="option.id"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-gray-600 font-medium">Name</label>
+            <input
+              v-model="commandSetupForm.name"
+              type="text"
+              placeholder="e.g. Pump Start"
+              class="border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+            />
+          </div>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-gray-600 font-medium">JSON Command</label>
+          <textarea
+            v-model="commandSetupForm.commandText"
+            rows="9"
+            placeholder='{\n  "action": "on",\n  "value": 1\n}'
+            class="max-h-[40vh] overflow-y-auto border border-gray-300 rounded px-2 py-2 font-mono text-xs focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            class="px-3 py-1.5 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+            :disabled="isSavingCommandSetup"
+            @click="closeCommandSetupModal"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+            :disabled="isSavingCommandSetup"
+            @click="handleCreateCommandSetup"
+          >
+            {{ isSavingCommandSetup ? "Saving..." : isEditingCommandSetup ? "Update" : "Save" }}
+          </button>
+        </div>
+      </template>
+    </BaseModal>
   </section>
 </template>
 
@@ -497,8 +739,13 @@ import {
 } from "@/composables/DeviceRegistration/SSEHandle";
 import { useLoadDataRow } from "@/composables/DeviceRegistration/loadDataRow";
 import { useDeviceFilter } from "@/composables/DeviceRegistration/DeviceFilter";
+import { useRegisteredControlUrlTab } from "@/composables/DeviceRegistration/useRegisteredControlUrlTab";
+import { useCommandSetupTab } from "@/composables/DeviceRegistration/useCommandSetupTab";
 import GatewayDetailModal from "@/components/Modals/Devices/GatewayDetailModal.vue";
 import BaseNodeDetailModal from "@/components/Modals/Devices/BaseNodeDetailModal.vue";
+import CommandDetailModal from "@/components/Modals/Devices/CommandDetailModal.vue";
+import RegisteredControlUrlDetailModal from "@/components/Modals/Devices/RegisteredControlUrlDetailModal.vue";
+import BaseModal from "@/components/Modals/BaseModal.vue";
 
 defineProps<{
   section: Section;
@@ -507,13 +754,28 @@ defineProps<{
 const gatewayRows = ref<DeviceRow[]>([]);
 const nodeRows = ref<DeviceRow[]>([]);
 const registeredRows = ref<DeviceRow[]>([]);
-const registeredControlUrlRows = ref<DeviceRow[]>([]);
 const controllerStatesByNode = ref<Record<string, ControllerState[]>>({});
 const deviceTableKey = ref(0);
 const isGatewayDetailOpen = ref(false);
 const selectedGateway = ref<DeviceRow | null>(null);
 const isNodeDetailOpen = ref(false);
 const selectedNodeDetail = ref<NodeInfo | null>(null);
+const isCommandSetupDetailOpen = ref(false);
+const selectedCommandSetupRow = ref<DeviceRow | null>(null);
+const isRegisteredControlUrlDetailOpen = ref(false);
+const selectedRegisteredControlUrl = ref<DeviceRow | null>(null);
+const isRegisteredControlUrlEditOpen = ref(false);
+const isSavingRegisteredControlUrlEdit = ref(false);
+const registeredControlUrlEditForm = ref({
+  id: "",
+  node_id: "",
+  node_external_id: "",
+  controller_id: "",
+  name: "",
+  url: "",
+  input_type: "",
+});
+const isDeviceLoading = ref(false);
 
 const { metrics, fetchMetrics } = useMetrics();
 const selectedNodeMetricKey = ref<string>("");
@@ -534,12 +796,35 @@ function handleNodeIdChange(value: string) {
 const { isDeactivatingDevice, deactivateDevice } = useDeviceDeactivation();
 const { registerDevice } = useRegisterDevice();
 const authStore = useAuthStore();
+const {
+  registeredControlUrlRows,
+  loadRegisteredControlUrls,
+  isDeletingRegisteredControlUrl,
+  handleDeleteRegisteredControlUrl,
+} = useRegisteredControlUrlTab({ loadingRef: isDeviceLoading });
+const {
+  commandSetupRows,
+  isCommandSetupModalOpen,
+  isSavingCommandSetup,
+  isEditingCommandSetup,
+  controlUrlOptions,
+  commandSetupForm,
+  loadCommandSetups,
+  openCommandSetupModal,
+  openEditCommandSetupModal,
+  closeCommandSetupModal,
+  resetCommandSetupForm,
+  handleCreateCommandSetup,
+  isDeletingCommandSetup,
+  canEditCommandSetup,
+  canDeleteCommandSetup,
+  handleDeleteCommandSetup,
+} = useCommandSetupTab({ loadingRef: isDeviceLoading });
 const gatewayIdMap = ref<Record<string, string>>({});
 const isGatewayIdMapLoading = ref(false);
 const nodeIdMap = ref<Record<string, string>>({});
 const isNodeIdMapLoading = ref(false);
 const deletingRegisteredDeviceMap = ref<Record<string, boolean>>({});
-const deletingRegisteredControlUrlMap = ref<Record<string, boolean>>({});
 
 function getRegisteredDeviceKey(row: DeviceRow) {
   return `${row.resourceType ?? "unknown"}:${row.id}`;
@@ -553,23 +838,6 @@ function setDeletingRegisteredDevice(row: DeviceRow, value: boolean) {
   deletingRegisteredDeviceMap.value = {
     ...deletingRegisteredDeviceMap.value,
     [getRegisteredDeviceKey(row)]: value,
-  };
-}
-
-function getRegisteredControlUrlKey(row: DeviceRow) {
-  return row.id;
-}
-
-function isDeletingRegisteredControlUrl(row: DeviceRow) {
-  return Boolean(
-    deletingRegisteredControlUrlMap.value[getRegisteredControlUrlKey(row)],
-  );
-}
-
-function setDeletingRegisteredControlUrl(row: DeviceRow, value: boolean) {
-  deletingRegisteredControlUrlMap.value = {
-    ...deletingRegisteredControlUrlMap.value,
-    [getRegisteredControlUrlKey(row)]: value,
   };
 }
 
@@ -621,6 +889,8 @@ function mapRegisteredGatewayRow(row: any): DeviceRow {
     status: row?.status === "online" ? "online" : "offline",
     registered: true,
     lastSeen: row?.last_seen ?? null,
+    createdAt: row?.created_at ?? null,
+    updatedAt: row?.updated_at ?? null,
   };
 }
 
@@ -638,28 +908,27 @@ function mapRegisteredNodeRow(row: any): DeviceRow {
     status: row?.status === "online" ? "online" : "offline",
     registered: true,
     lastSeen: row?.last_seen ?? null,
+    createdAt: row?.created_at ?? null,
+    updatedAt: row?.updated_at ?? null,
   };
 }
 
-function mapRegisteredControlUrlRow(row: any): DeviceRow {
-  const controlUrlId = row?.id ? String(row.id) : "";
-  const controllerId = row?.controller_id ? String(row.controller_id) : null;
-  const nodeExternalId = row?.node?.external_id
-    ? String(row.node.external_id)
-    : null;
-  return {
-    id: controlUrlId,
-    externalId: nodeExternalId,
-    resourceType: "node",
-    name: row?.name ?? row?.url ?? controllerId ?? `Control URL ${controlUrlId}`,
-    gatewayId: row?.node?.gateway?.external_id ?? null,
-    type: row?.input_type ?? null,
-    status: "offline",
-    registered: true,
-    controllerId,
-    inputType: row?.input_type ?? null,
-    url: row?.url ?? null,
-  };
+function toTimestamp(value?: string | null) {
+  if (!value) return 0;
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function sortByLatestThenId(a: DeviceRow, b: DeviceRow) {
+  const aTime = Math.max(toTimestamp(a.updatedAt), toTimestamp(a.createdAt));
+  const bTime = Math.max(toTimestamp(b.updatedAt), toTimestamp(b.createdAt));
+  if (aTime !== bTime) {
+    return bTime - aTime;
+  }
+  return a.id.localeCompare(b.id, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
 }
 
 async function loadRegisteredDevices() {
@@ -675,45 +944,23 @@ async function loadRegisteredDevices() {
       fetchAllPages(`${base}/gateways`, authorization),
       fetchAllPages(`${base}/nodes?include=gateway`, authorization),
     ]);
-    const mappedGateways = gatewayPayload.map(mapRegisteredGatewayRow);
-    const mappedNodes = nodePayload.map(mapRegisteredNodeRow);
-    registeredRows.value = [...mappedGateways, ...mappedNodes].sort((a, b) =>
-      a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: "base" }),
+    const mappedGateways = gatewayPayload
+      .filter((row: any) => row?.deleted_at == null)
+      .map(mapRegisteredGatewayRow);
+    const mappedNodes = nodePayload
+      .filter(
+        (row: any) =>
+          row?.deleted_at == null &&
+          (!row?.gateway || row?.gateway?.deleted_at == null),
+      )
+      .map(mapRegisteredNodeRow);
+    registeredRows.value = [...mappedGateways, ...mappedNodes].sort(
+      sortByLatestThenId,
     );
   } catch (error: any) {
     console.error("Failed to load registered devices", error);
     registeredRows.value = [];
     message.error(error?.message ?? "Failed to load registered devices.");
-  } finally {
-    isDeviceLoading.value = false;
-  }
-}
-
-async function loadRegisteredControlUrls() {
-  if (!import.meta.client) return;
-  if (!apiConfig.controlModule) return;
-  const authorization = authStore.authorizationHeader;
-  if (!authorization) return;
-
-  isDeviceLoading.value = true;
-  try {
-    const base = apiConfig.controlModule.replace(/\/$/, "");
-    const controlUrlPayload = await fetchAllPages(
-      `${base}/control-urls?include=gateway`,
-      authorization,
-    );
-    registeredControlUrlRows.value = controlUrlPayload
-      .map(mapRegisteredControlUrlRow)
-      .sort((a, b) =>
-        (a.name ?? "").localeCompare(b.name ?? "", undefined, {
-          numeric: true,
-          sensitivity: "base",
-        }),
-      );
-  } catch (error: any) {
-    console.error("Failed to load registered control urls", error);
-    registeredControlUrlRows.value = [];
-    message.error(error?.message ?? "Failed to load registered control urls.");
   } finally {
     isDeviceLoading.value = false;
   }
@@ -885,54 +1132,6 @@ async function handleDeleteRegisteredDevice(row: DeviceRow) {
   }
 }
 
-async function handleDeleteRegisteredControlUrl(row: DeviceRow) {
-  if (!apiConfig.controlModule) {
-    message.warning("Control module endpoint is not configured.");
-    return;
-  }
-  const authorization = authStore.authorizationHeader;
-  if (!authorization) {
-    message.warning("Missing authentication token.");
-    return;
-  }
-  if (!row?.id) {
-    message.warning("Missing control url id.");
-    return;
-  }
-  if (isDeletingRegisteredControlUrl(row)) {
-    return;
-  }
-
-  const base = apiConfig.controlModule.replace(/\/$/, "");
-  const encodedId = encodeURIComponent(row.id);
-  const endpoint = `${base}/control-urls/${encodedId}`;
-
-  setDeletingRegisteredControlUrl(row, true);
-  try {
-    const response = await fetch(endpoint, {
-      method: "DELETE",
-      headers: {
-        Authorization: authorization,
-        Accept: "application/json",
-      },
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new Error(payload?.message ?? "Failed to delete control url.");
-    }
-
-    message.success(payload?.message ?? "Control URL deleted.");
-    registeredControlUrlRows.value = registeredControlUrlRows.value.filter(
-      (item) => item.id !== row.id,
-    );
-  } catch (error: any) {
-    console.error("Failed to delete control url", error);
-    message.error(error?.message ?? "Unable to delete control url.");
-  } finally {
-    setDeletingRegisteredControlUrl(row, false);
-  }
-}
-
 async function handleEnroll(row: DeviceRow) {
   if (activeDeviceTab.value !== "gateways" && !row.gatewayId) {
     message.warning("Gateway ID is missing for this node.");
@@ -1040,6 +1239,123 @@ function closeNodeDetail() {
   selectedNodeDetail.value = null;
 }
 
+function openRegisteredControlUrlDetail(row: DeviceRow) {
+  selectedRegisteredControlUrl.value = row;
+  isRegisteredControlUrlDetailOpen.value = true;
+}
+
+function closeRegisteredControlUrlDetail() {
+  isRegisteredControlUrlDetailOpen.value = false;
+  selectedRegisteredControlUrl.value = null;
+}
+
+function displayCommandValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "N/A";
+  const content = String(value);
+  return content.length > 12 ? `${content.slice(0, 12)}...` : content;
+}
+
+function openCommandSetupDetail(row: DeviceRow) {
+  selectedCommandSetupRow.value = row;
+  isCommandSetupDetailOpen.value = true;
+}
+
+function closeCommandSetupDetail() {
+  isCommandSetupDetailOpen.value = false;
+  selectedCommandSetupRow.value = null;
+}
+
+function openEditCommandSetupRow(row: DeviceRow) {
+  openEditCommandSetupModal(row);
+}
+
+function openRegisteredControlUrlEdit(row: DeviceRow) {
+  registeredControlUrlEditForm.value = {
+    id: row.id ?? "",
+    node_id: row.nodeInternalId ?? "",
+    node_external_id: row.nodeId ?? "",
+    controller_id: row.controllerId ?? "",
+    name: row.name ?? "",
+    url: row.url ?? "",
+    input_type: row.inputType ?? "",
+  };
+  isRegisteredControlUrlEditOpen.value = true;
+}
+
+function closeRegisteredControlUrlEdit() {
+  isRegisteredControlUrlEditOpen.value = false;
+}
+
+async function saveRegisteredControlUrlEdit() {
+  if (!registeredControlUrlEditForm.value.id) {
+    message.warning("Missing control url id.");
+    return;
+  }
+  if (!registeredControlUrlEditForm.value.node_id) {
+    message.warning("Missing node id.");
+    return;
+  }
+  if (!registeredControlUrlEditForm.value.controller_id.trim()) {
+    message.warning("Please input controller id.");
+    return;
+  }
+  if (!registeredControlUrlEditForm.value.name.trim()) {
+    message.warning("Please input control url name.");
+    return;
+  }
+  if (!registeredControlUrlEditForm.value.url.trim()) {
+    message.warning("Please input control url.");
+    return;
+  }
+  if (!registeredControlUrlEditForm.value.input_type.trim()) {
+    message.warning("Please input input type.");
+    return;
+  }
+  const authorization = authStore.authorizationHeader;
+  if (!authorization) {
+    message.warning("Missing authentication token.");
+    return;
+  }
+  const base = (apiConfig.controlModule || "").replace(/\/$/, "");
+  if (!base) {
+    message.warning("Control module endpoint is not configured.");
+    return;
+  }
+
+  isSavingRegisteredControlUrlEdit.value = true;
+  try {
+    const endpoint = `${base}/control-urls/${encodeURIComponent(
+      registeredControlUrlEditForm.value.id,
+    )}`;
+    const response = await fetch(endpoint, {
+      method: "PUT",
+      headers: {
+        Authorization: authorization,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        controller_id: registeredControlUrlEditForm.value.controller_id.trim(),
+        node_id: registeredControlUrlEditForm.value.node_id,
+        name: registeredControlUrlEditForm.value.name.trim(),
+        url: registeredControlUrlEditForm.value.url.trim(),
+        input_type: registeredControlUrlEditForm.value.input_type.trim(),
+      }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(payload?.message ?? "Failed to update control url.");
+    }
+    message.success(payload?.message ?? "Control URL updated.");
+    closeRegisteredControlUrlEdit();
+    await loadRegisteredControlUrls();
+  } catch (error: any) {
+    message.error(error?.message ?? "Unable to update control url.");
+  } finally {
+    isSavingRegisteredControlUrlEdit.value = false;
+  }
+}
+
 const nodeCollectionsStore = createNodeCollectionsStore();
 let gatewayEventSource: EventSource | null = null;
 
@@ -1058,17 +1374,21 @@ let deviceRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
 const deviceTabs = computed<DeviceTab[]>(() => [
   { key: "gateways", label: "Gateways", rows: gatewayRows.value },
   { key: "nodes", label: "Nodes", rows: nodeRows.value },
-  { key: "registered", label: "Registered Device", rows: registeredRows.value },
+  { key: "registered", label: "Enrolled", rows: registeredRows.value },
   {
     key: "registered_control_urls",
-    label: "Registered Control URL",
+    label: "Control URL",
     rows: registeredControlUrlRows.value,
+  },
+  {
+    key: "command_setup",
+    label: "Command",
+    rows: commandSetupRows.value,
   },
 ]);
 
 const defaultDeviceTab = computed(() => deviceTabs.value[0]!);
 const activeDeviceTab = ref<DeviceTabKey>("gateways");
-const isDeviceLoading = ref(false);
 const devicePagination = ref({ page: 1, perPage: 5, lastPage: 1, total: 0 });
 const deviceLoadingText = ref("Loading devices...");
 const gatewayTableColumns: Array<{ key: string; label: string; width: string }> = [
@@ -1107,11 +1427,20 @@ const registeredControlUrlTableColumns: Array<{
   label: string;
   width: string;
 }> = [
-  { key: "controllerId", label: "Controller ID", width: "18%" },
-  { key: "name", label: "Name", width: "18%" },
-  { key: "url", label: "URL", width: "24%" },
+  { key: "nodeId", label: "Node External ID", width: "16%" },
+  { key: "controllerId", label: "Controller ID", width: "16%" },
+  { key: "nodeType", label: "Node Type", width: "12%" },
+  { key: "name", label: "Control URL Name", width: "16%" },
+  { key: "url", label: "URL", width: "18%" },
   { key: "inputType", label: "Input Type", width: "12%" },
-  { key: "gatewayId", label: "Gateway ID", width: "18%" },
+  { key: "actions", label: "Actions", width: "10%" },
+];
+const commandSetupTableColumns: Array<{ key: string; label: string; width: string }> = [
+  { key: "name", label: "Name", width: "20%" },
+  { key: "nodeId", label: "Node ID", width: "20%" },
+  { key: "url", label: "URL", width: "18%" },
+  { key: "inputType", label: "Input Type", width: "14%" },
+  { key: "command", label: "Command JSON", width: "18%" },
   { key: "actions", label: "Actions", width: "10%" },
 ];
 const {
@@ -1137,6 +1466,7 @@ const {
 const deviceTableColumnDefinitions = computed(() => {
   if (activeDeviceTab.value === "gateways") return gatewayTableColumns;
   if (activeDeviceTab.value === "nodes") return nodeTableColumns;
+  if (activeDeviceTab.value === "command_setup") return commandSetupTableColumns;
   if (activeDeviceTab.value === "registered_control_urls") {
     return registeredControlUrlTableColumns;
   }
@@ -1169,9 +1499,19 @@ const currentDeviceRows = computed<DeviceRow[]>(
 const filteredDeviceRows = computed<DeviceRow[]>(() =>
   filterDeviceRows(currentDeviceRows.value)
     .slice()
-    .sort((a, b) =>
-      a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: "base" }),
-    ),
+    .sort((a, b) => {
+      if (
+        activeDeviceTab.value === "registered" ||
+        activeDeviceTab.value === "command_setup" ||
+        activeDeviceTab.value === "registered_control_urls"
+      ) {
+        return sortByLatestThenId(a, b);
+      }
+      return a.id.localeCompare(b.id, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    }),
 );
 const displayedDeviceRows = computed<DeviceRow[]>(() => {
   const start =
@@ -1208,6 +1548,10 @@ function refreshDevices() {
   }
   if (activeDeviceTab.value === "registered_control_urls") {
     loadRegisteredControlUrls();
+    return;
+  }
+  if (activeDeviceTab.value === "command_setup") {
+    loadCommandSetups();
     return;
   }
   isDeviceLoading.value = true;
@@ -1247,6 +1591,10 @@ function exportDevices() {
         return row.name;
       case "gatewayId":
         return row.gatewayId ?? "";
+      case "nodeId":
+        return row.nodeId ?? "";
+      case "nodeType":
+        return row.nodeType ?? "";
       case "type":
         return row.type ?? "";
       case "ip":
@@ -1259,10 +1607,14 @@ function exportDevices() {
         return row.registered ?? "";
       case "controllerId":
         return row.controllerId ?? "";
+      case "controlUrlId":
+        return row.controlUrlId ?? "";
       case "inputType":
         return row.inputType ?? "";
       case "url":
         return row.url ?? "";
+      case "command":
+        return row.command ?? "";
       case "lastSeen":
         return row.lastSeen ?? "";
       default:
@@ -1443,6 +1795,7 @@ onMounted(() => {
   loadGatewayIdMap();
   loadRegisteredDevices();
   loadRegisteredControlUrls();
+  loadCommandSetups();
   connectGatewaySse();
   startDeviceStatusPolling();
   fetchMetrics();

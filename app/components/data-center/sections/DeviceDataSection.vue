@@ -119,6 +119,17 @@
                   <td class="p-2 text-gray-700">{{ row.mac_address || "-" }}</td>
                   <td class="p-2 text-gray-700">{{ row.ip_address || "-" }}</td>
                   <td class="p-2 text-gray-700">{{ formatDateTime(row.created_at) }}</td>
+                  <td class="p-2 text-center">
+                    <button
+                      type="button"
+                      class="w-8 h-8 inline-flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:bg-gray-100"
+                      title="View details"
+                      @click.stop="openGatewayDetail(row)"
+                    >
+                      <BootstrapIcon name="info-circle" class="w-3 h-3" />
+                      <span class="sr-only">View gateway details</span>
+                    </button>
+                  </td>
                 </tr>
               </template>
 
@@ -255,6 +266,17 @@
                   <td class="p-2 text-gray-700">{{ row.mac_address || "-" }}</td>
                   <td class="p-2 text-gray-700">{{ row.ip_address || "-" }}</td>
                   <td class="p-2 text-gray-700">{{ formatDateTime(row.created_at) }}</td>
+                  <td class="p-2 text-center">
+                    <button
+                      type="button"
+                      class="w-8 h-8 inline-flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:bg-gray-100"
+                      title="View node details"
+                      @click.stop="openNodeDetail(row)"
+                    >
+                      <BootstrapIcon name="info-circle" class="w-3 h-3" />
+                      <span class="sr-only">View node details</span>
+                    </button>
+                  </td>
                 </tr>
               </template>
 
@@ -271,6 +293,18 @@
         </div>
       </a-tab-pane>
     </a-tabs>
+    <DeviceDataGatewayDetailModal
+      :gateway="selectedGateway"
+      :model-value="isGatewayDetailOpen"
+      @update:modelValue="isGatewayDetailOpen = $event"
+      @close="closeGatewayDetail"
+    />
+    <BaseNodeDetailModal
+      :model-value="isNodeDetailOpen"
+      :node="selectedNodeDetail"
+      @update:modelValue="isNodeDetailOpen = $event"
+      @close="closeNodeDetail"
+    />
   </section>
 </template>
 
@@ -283,6 +317,9 @@ import AdvancedFilterPanel, {
   type FilterFieldRow,
 } from "@/components/common/AdvancedFilterPanel.vue";
 import DataBoxCard from "@/components/common/DataBoxCard.vue";
+import DeviceDataGatewayDetailModal from "@/components/Modals/Devices/DeviceDataGatewayDetailModal.vue";
+import BaseNodeDetailModal from "@/components/Modals/Devices/BaseNodeDetailModal.vue";
+import type { NodeInfo } from "@/types/devices-control";
 
 type DeviceDataRow = {
   id: string;
@@ -292,7 +329,11 @@ type DeviceDataRow = {
   mac_address?: string | null;
   ip_address?: string | null;
   type?: string | null;
+  status?: string | null;
+  registered?: boolean | null;
+  last_seen?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
   deleted_at?: string | null;
 };
 
@@ -322,13 +363,16 @@ const isGatewayLoading = ref(false);
 const isGatewayFilterVisible = ref(true);
 const gatewayPagination = ref({ page: 1, perPage: 10, lastPage: 1, total: 0 });
 const gatewayUuidToExternalIdMap = ref<Record<string, string>>({});
+const isGatewayDetailOpen = ref(false);
+const selectedGateway = ref<DeviceDataRow | null>(null);
 
 const gatewayColumns: Array<{ key: string; label: string; width: string }> = [
-  { key: "external_id", label: "Gateway ID", width: "20%" },
-  { key: "name", label: "Name", width: "24%" },
-  { key: "mac_address", label: "MAC", width: "20%" },
-  { key: "ip_address", label: "IP", width: "16%" },
-  { key: "created_at", label: "Created At", width: "20%" },
+  { key: "external_id", label: "Gateway ID", width: "18%" },
+  { key: "name", label: "Name", width: "22%" },
+  { key: "mac_address", label: "MAC", width: "18%" },
+  { key: "ip_address", label: "IP", width: "14%" },
+  { key: "created_at", label: "Created At", width: "18%" },
+  { key: "actions", label: "Actions", width: "10%" },
 ];
 
 const gatewayFilters = reactive<GatewayFilterState>({
@@ -386,15 +430,18 @@ const nodeSearchKeyword = ref("");
 const isNodeLoading = ref(false);
 const isNodeFilterVisible = ref(true);
 const nodePagination = ref({ page: 1, perPage: 10, lastPage: 1, total: 0 });
+const isNodeDetailOpen = ref(false);
+const selectedNodeDetail = ref<NodeInfo | null>(null);
 
 const nodeColumns: Array<{ key: string; label: string; width: string }> = [
-  { key: "external_id", label: "Node ID", width: "16%" },
-  { key: "name", label: "Name", width: "16%" },
+  { key: "external_id", label: "Node ID", width: "14%" },
+  { key: "name", label: "Name", width: "14%" },
   { key: "gateway_id", label: "Gateway ID", width: "14%" },
   { key: "type", label: "Type", width: "10%" },
   { key: "mac_address", label: "MAC", width: "14%" },
   { key: "ip_address", label: "IP", width: "12%" },
-  { key: "created_at", label: "Created At", width: "18%" },
+  { key: "created_at", label: "Created At", width: "14%" },
+  { key: "actions", label: "Actions", width: "8%" },
 ];
 
 const nodeFilters = reactive<NodeFilterState>({
@@ -503,8 +550,27 @@ function mapDeviceRow(row: any): DeviceDataRow {
     mac_address: row?.mac_address ?? null,
     ip_address: row?.ip_address ?? null,
     type: row?.type ?? null,
+    status: row?.status ?? null,
+    registered: typeof row?.registered === "boolean" ? row.registered : null,
+    last_seen: row?.last_seen ?? null,
     created_at: row?.created_at ?? null,
+    updated_at: row?.updated_at ?? null,
     deleted_at: row?.deleted_at ?? null,
+  };
+}
+
+function mapDeviceDataRowToNodeInfo(row: DeviceDataRow): NodeInfo {
+  return {
+    id: row.id,
+    external_id: row.external_id ?? null,
+    name: row.name ?? null,
+    type: row.type ?? null,
+    gateway_id: row.gateway_id ?? null,
+    ip_address: row.ip_address ?? null,
+    mac_address: row.mac_address ?? null,
+    status: row.status ?? null,
+    registered: row.registered ?? null,
+    last_seen: row.last_seen ?? row.created_at ?? null,
   };
 }
 
@@ -594,6 +660,16 @@ function refreshGatewayRows() {
   fetchGatewayRows();
 }
 
+function openGatewayDetail(row: DeviceDataRow) {
+  selectedGateway.value = row;
+  isGatewayDetailOpen.value = true;
+}
+
+function closeGatewayDetail() {
+  isGatewayDetailOpen.value = false;
+  selectedGateway.value = null;
+}
+
 function prevGatewayPage() {
   if (gatewayPagination.value.page > 1) gatewayPagination.value.page -= 1;
 }
@@ -637,6 +713,16 @@ function toggleNodeFilters() {
 function refreshNodeRows() {
   if (isNodeLoading.value) return;
   fetchNodeRows();
+}
+
+function openNodeDetail(row: DeviceDataRow) {
+  selectedNodeDetail.value = mapDeviceDataRowToNodeInfo(row);
+  isNodeDetailOpen.value = true;
+}
+
+function closeNodeDetail() {
+  isNodeDetailOpen.value = false;
+  selectedNodeDetail.value = null;
 }
 
 function prevNodePage() {

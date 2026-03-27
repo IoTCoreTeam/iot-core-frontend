@@ -1,6 +1,11 @@
 import type { Component } from "vue";
 
-export type DeviceTabKey = "gateways" | "nodes" | "registered" | "registered_control_urls";
+export type DeviceTabKey =
+  | "gateways"
+  | "nodes"
+  | "command_setup"
+  | "registered"
+  | "registered_control_urls";
 
 export type DeviceRowStatus = "online" | "offline";
 
@@ -35,8 +40,40 @@ export type DeviceRow = {
   connectedNodes?: string[] | null;
   managed_areas?: { id: number; name: string }[] | null;
   controllerId?: string | null;
+  controlUrlId?: string | null;
+  nodeId?: string | null;
+  nodeInternalId?: string | null;
+  nodeName?: string | null;
+  nodeType?: string | null;
   inputType?: string | null;
+  analogCount?: number | null;
+  commandCount?: number | null;
   url?: string | null;
+  command?: string | null;
+  commandType?: "json_command" | "analog_signal" | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  deletedAt?: string | null;
+  controlUrlMeta?: {
+    id?: string | null;
+    nodeId?: string | null;
+    nodeExternalId?: string | null;
+    gatewayId?: string | null;
+    controllerId?: string | null;
+    name?: string | null;
+    url?: string | null;
+    inputType?: string | null;
+  } | null;
+  commandDetail?: {
+    type?: "json_command" | "analog_signal" | null;
+    name?: string | null;
+    command?: unknown;
+    minValue?: number | string | null;
+    maxValue?: number | string | null;
+    unit?: string | null;
+    signalType?: string | null;
+    resolutionBits?: number | null;
+  } | null;
 };
 
 export type NodeInfo = {

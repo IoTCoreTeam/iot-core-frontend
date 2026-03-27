@@ -71,7 +71,12 @@ export function useScenarioControlUrls(params: {
         : Array.isArray(payload)
           ? payload
           : [];
-      controlUrlOptions.value = rows as ControlUrlOption[];
+      controlUrlOptions.value = (rows as ControlUrlOption[]).filter((row: any) => {
+        if (row?.deleted_at != null) return false;
+        if (row?.node?.deleted_at != null) return false;
+        if (row?.node?.gateway?.deleted_at != null) return false;
+        return true;
+      });
     } catch (error: any) {
       message.error(error?.message ?? "Failed to load control urls.");
     } finally {

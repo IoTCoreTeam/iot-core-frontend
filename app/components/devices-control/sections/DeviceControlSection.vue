@@ -311,7 +311,12 @@ async function fetchControlUrls() {
       : Array.isArray(payload)
         ? payload
         : [];
-    controlUrlItems.value = rows as ControlUrlItem[];
+    controlUrlItems.value = (rows as ControlUrlItem[]).filter((row: any) => {
+      if (row?.deleted_at != null) return false;
+      if (row?.node?.deleted_at != null) return false;
+      if (row?.node?.gateway?.deleted_at != null) return false;
+      return true;
+    });
   } catch (error: any) {
     controlUrlLoadError.value = error?.message ?? "Failed to load control urls.";
     controlUrlItems.value = [];
