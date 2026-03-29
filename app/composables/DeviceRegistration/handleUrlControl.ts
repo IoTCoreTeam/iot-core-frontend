@@ -290,7 +290,7 @@ export function useHandleUrlControl(options: HandleUrlControlOptions) {
       return;
     }
 
-    const resolvedName = item.name || item.controller_id || item.url;
+    const resolvedName = item.name || item.controller_id || item.id;
     const resolvedInputType = item.input_type || "digital";
     try {
       await updateControlUrl(authorization, item.id, {

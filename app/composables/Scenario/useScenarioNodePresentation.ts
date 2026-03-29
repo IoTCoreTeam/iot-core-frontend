@@ -40,7 +40,7 @@ export function useScenarioNodePresentation(params: {
       const controlUrlId = node.data?.control_url_id ?? "";
       const isMissing = isMissingControlUrl(controlUrlId);
       const selected = params.controlUrlOptions.value.find((item) => item.id === controlUrlId);
-      const name = selected?.name || selected?.url || "Action";
+      const name = selected?.name || "Action";
       const duration = node.data?.duration_seconds ?? 0;
       const inputKind = normalizeControlInputType(selected?.input_type);
       const actionValue = node.data?.action_value;

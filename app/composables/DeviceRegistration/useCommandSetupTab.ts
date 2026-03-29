@@ -206,10 +206,9 @@ export function useCommandSetupTab(options: UseCommandSetupTabOptions = {}) {
         .map((row: any) => {
           const id = row?.id ? String(row.id) : "";
           const name = row?.name ? String(row.name) : `Control URL ${id}`;
-          const suffix = row?.url ? ` (${String(row.url)})` : "";
           return {
             id,
-            label: `${name}${suffix}`,
+            label: name,
           };
         })
         .filter((row: { id: string }) => row.id.length > 0);

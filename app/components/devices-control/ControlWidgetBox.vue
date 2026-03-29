@@ -287,7 +287,7 @@ const widgets = computed<ControlWidget[]>(() =>
       item.node?.gateway?.external_id ??
       "N/A",
     nodeName: item.node?.name ?? item.node?.external_id ?? "N/A",
-    controllerName: item.name ?? item.url ?? "N/A",
+    controllerName: item.name ?? item.controller_id ?? item.id ?? "N/A",
     isOn: false,
     resolvedInputType: resolveWidgetInputType(item),
     raw: item,
@@ -558,9 +558,9 @@ async function applyAnalog(widget: ControlWidget) {
   executingMap.value[widget.id] = true;
   try {
     await props.onExecuteAnalog(widget, value);
-    message.success("Analog value sent.");
+    message.success("Analog value updated.");
   } catch (error: any) {
-    message.error(error?.message ?? "Failed to send analog value.");
+    message.error(error?.message ?? "Failed to update analog value.");
   } finally {
     executingMap.value[widget.id] = false;
   }

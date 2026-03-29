@@ -52,7 +52,7 @@ export function useRegisteredControlUrlTab(
       nodeName,
       nodeType,
       resourceType: "node",
-      name: row?.name ?? row?.url ?? controllerId ?? `Control URL ${controlUrlId}`,
+      name: row?.name ?? controllerId ?? `Control URL ${controlUrlId}`,
       type: row?.input_type ?? null,
       status: "offline",
       registered: true,

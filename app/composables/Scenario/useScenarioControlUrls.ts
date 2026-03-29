@@ -21,7 +21,7 @@ export function useScenarioControlUrls(params: {
     const map = new Map<string, string>();
     controlUrlOptions.value.forEach((item) => {
       if (item?.id) {
-        map.set(item.id, item.name || item.url || item.id);
+        map.set(item.id, item.name || item.id);
       }
     });
     return map;
