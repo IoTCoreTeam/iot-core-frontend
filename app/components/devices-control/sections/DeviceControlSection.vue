@@ -407,10 +407,12 @@ async function handleExecuteControlUrl(widget: { id: string; raw: ControlUrlItem
   const url = widget.raw.url ?? "";
   if (!url) throw new Error("Missing control URL.");
   const actionType = resolveActionType(widget.raw);
+  const device = String(widget.raw.name ?? "").trim();
   await executeControlUrl(authorization, widget.id, {
     url,
     state: nextState ? "on" : "off",
     action_type: actionType,
+    device: device || undefined,
   });
 }
 
@@ -420,10 +422,12 @@ async function handleExecuteAnalog(widget: { id: string; raw: ControlUrlItem }, 
   const url = widget.raw.url ?? "";
   if (!url) throw new Error("Missing control URL.");
   const actionType = resolveActionType(widget.raw);
+  const device = String(widget.raw.name ?? "").trim();
   await executeControlUrl(authorization, widget.id, {
     url,
     value,
     action_type: actionType,
+    device: device || undefined,
   });
 }
 
