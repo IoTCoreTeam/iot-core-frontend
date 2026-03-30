@@ -256,6 +256,13 @@ function createNodePopupContent(row: DeviceRow) {
           h("div", { class: "font-semibold text-gray-800" }, row.name ?? row.id ?? "Node"),
           h("div", { class: "text-gray-500" }, `${row.id} - ${row.status ?? "unknown"}`),
           h("div", { class: "text-gray-500" }, `${row.lat?.toFixed?.(6) ?? "N/A"}, ${row.lng?.toFixed?.(6) ?? "N/A"}`),
+          h(
+            "div",
+            { class: "text-gray-500" },
+            row.heading_deg === null || row.heading_deg === undefined
+              ? "Heading: N/A"
+              : `Heading: ${row.heading_deg.toFixed(1)}°${row.heading_cardinal ? ` (${row.heading_cardinal})` : ""}`,
+          ),
         ]);
     },
   });
@@ -276,15 +283,54 @@ function getNodeMarkerColor(row: DeviceRow) {
   return "#ef4444";
 }
 
-function createNodeMarkerElement(color: string) {
-  const el = document.createElement("div");
-  el.style.width = "14px";
-  el.style.height = "14px";
-  el.style.borderRadius = "9999px";
-  el.style.backgroundColor = color;
-  el.style.border = "2px solid #ffffff";
-  el.style.boxShadow = "0 0 0 2px rgba(15, 23, 42, 0.18)";
+function resolveHeadingDeg(value: unknown): number | null {
+  const heading = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(heading)) return null;
+  return ((heading % 360) + 360) % 360;
+}
+
+function resolveNodeHeadingDeg(row: DeviceRow): number | null {
+  return resolveHeadingDeg(row.heading_deg);
+}
+
+function applyNodeMarkerAppearance(el: HTMLDivElement, color: string, heading_deg: number | null) {
+  const resolvedHeading = resolveHeadingDeg(heading_deg);
+  const shadow = "0 0 0 2px rgba(15, 23, 42, 0.18)";
   el.dataset.color = color;
+
+  if (resolvedHeading === null) {
+    el.style.width = "14px";
+    el.style.height = "14px";
+    el.style.borderRadius = "9999px";
+    el.style.backgroundColor = color;
+    el.style.border = "2px solid #ffffff";
+    el.style.boxShadow = shadow;
+    el.style.display = "block";
+    el.innerHTML = "";
+    el.dataset.markerKind = "dot";
+    el.dataset.heading = "";
+    return;
+  }
+
+  el.style.width = "20px";
+  el.style.height = "20px";
+  el.style.borderRadius = "0";
+  el.style.backgroundColor = "transparent";
+  el.style.border = "none";
+  el.style.boxShadow = shadow;
+  el.style.display = "block";
+  el.innerHTML = `
+<svg width="20" height="20" viewBox="0 0 24 24" style="display:block; transform: rotate(${resolvedHeading}deg); transform-origin: 50% 50%;">
+  <path d="M12 2L20 21L12 16.5L4 21Z" fill="${color}" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"></path>
+  <circle cx="12" cy="16.5" r="1.6" fill="#ffffff"></circle>
+</svg>`;
+  el.dataset.markerKind = "arrow";
+  el.dataset.heading = resolvedHeading.toFixed(2);
+}
+
+function createNodeMarkerElement(color: string, heading_deg: number | null) {
+  const el = document.createElement("div");
+  applyNodeMarkerAppearance(el, color, heading_deg);
   return el;
 }
 
@@ -302,28 +348,19 @@ function syncNodeMarkers() {
     nextIds.add(row.id);
 
     const desiredColor = getNodeMarkerColor(row);
+    const desiredHeading = resolveNodeHeadingDeg(row);
     const existing = nodeMarkers.get(row.id);
     if (existing) {
-      const existingColor = existing.getElement()?.dataset?.color;
-      if (existingColor !== desiredColor) {
-        existing.remove();
-        nodeMarkers.delete(row.id);
-        const popup = nodePopups.get(row.id);
-        if (popup) {
-          popup.cleanup();
-          nodePopups.delete(row.id);
-        }
-      } else {
-        existing.setLngLat([coords.lng, coords.lat]);
-        const popupContent = createNodePopupContent(row);
-        existing.getPopup()?.setDOMContent(popupContent.container);
-        const previous = nodePopups.get(row.id);
-        if (previous) {
-          previous.cleanup();
-        }
-        nodePopups.set(row.id, { cleanup: popupContent.cleanup });
-        return;
+      existing.setLngLat([coords.lng, coords.lat]);
+      applyNodeMarkerAppearance(existing.getElement() as HTMLDivElement, desiredColor, desiredHeading);
+      const popupContent = createNodePopupContent(row);
+      existing.getPopup()?.setDOMContent(popupContent.container);
+      const previous = nodePopups.get(row.id);
+      if (previous) {
+        previous.cleanup();
       }
+      nodePopups.set(row.id, { cleanup: popupContent.cleanup });
+      return;
     }
 
     const popupContent = createNodePopupContent(row);
@@ -331,7 +368,7 @@ function syncNodeMarkers() {
       popupContent.container
     );
     const marker = new maplibre.Marker({
-      element: createNodeMarkerElement(desiredColor),
+      element: createNodeMarkerElement(desiredColor, desiredHeading),
       anchor: "center",
     })
       .setLngLat([coords.lng, coords.lat])

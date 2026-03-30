@@ -17,7 +17,18 @@ export type NodeEventPayload = {
   mac_address?: string | null;
   lat?: number | null;
   lng?: number | null;
-  gps?: { lat?: number | null; lng?: number | null } | null;
+  heading_deg?: number | null;
+  heading_cardinal?: string | null;
+  head_lat?: number | null;
+  head_lng?: number | null;
+  gps?: {
+    lat?: number | null;
+    lng?: number | null;
+    heading_deg?: number | null;
+    heading_cardinal?: string | null;
+    head_lat?: number | null;
+    head_lng?: number | null;
+  } | null;
   status?: string | null;
   registered?: boolean | null;
   inside_map?: boolean | null;
@@ -89,6 +100,18 @@ function normalizeConnectedNodes(value?: unknown): string[] | null {
   return null;
 }
 
+function resolveHeadingDeg(value?: unknown): number | null {
+  const num = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(num)) return null;
+  return ((num % 360) + 360) % 360;
+}
+
+function resolveHeadingCardinal(value?: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const cardinal = value.trim().toUpperCase();
+  return cardinal.length > 0 ? cardinal : null;
+}
+
 function resolveNodeLocation(payload: NodeEventPayload, existing?: DeviceRow) {
   const lat =
     normalizeCoord(payload.lat, -90, 90) ??
@@ -101,6 +124,36 @@ function resolveNodeLocation(payload: NodeEventPayload, existing?: DeviceRow) {
     existing?.lng ??
     null;
   return { lat, lng };
+}
+
+function resolveNodeHeading(payload: NodeEventPayload, existing?: DeviceRow) {
+  const heading_deg =
+    resolveHeadingDeg(payload.heading_deg) ??
+    resolveHeadingDeg(payload.gps?.heading_deg) ??
+    resolveHeadingDeg(existing?.heading_deg) ??
+    null;
+  const heading_cardinal =
+    resolveHeadingCardinal(payload.heading_cardinal) ??
+    resolveHeadingCardinal(payload.gps?.heading_cardinal) ??
+    resolveHeadingCardinal(existing?.heading_cardinal) ??
+    null;
+  const head_lat =
+    normalizeCoord(payload.head_lat, -90, 90) ??
+    normalizeCoord(payload.gps?.head_lat, -90, 90) ??
+    normalizeCoord(existing?.head_lat, -90, 90) ??
+    null;
+  const head_lng =
+    normalizeCoord(payload.head_lng, -180, 180) ??
+    normalizeCoord(payload.gps?.head_lng, -180, 180) ??
+    normalizeCoord(existing?.head_lng, -180, 180) ??
+    null;
+
+  return {
+    heading_deg,
+    heading_cardinal,
+    head_lat,
+    head_lng,
+  };
 }
 
 function resolveNodeId(payload: NodeEventPayload): string | null {
@@ -129,6 +182,7 @@ function buildNodeRow(
     existing?.externalId,
   );
   const location = resolveNodeLocation(payload, existing);
+  const heading = resolveNodeHeading(payload, existing);
   const connectedNodes =
     normalizeConnectedNodes(pickFirst(payload.connected_nodes, payload.connectedNodes)) ??
     existing?.connectedNodes ??
@@ -142,6 +196,10 @@ function buildNodeRow(
     mac: pickFirst(payload.mac, payload.mac_address, existing?.mac),
     lat: location.lat,
     lng: location.lng,
+    heading_deg: heading.heading_deg,
+    heading_cardinal: heading.heading_cardinal,
+    head_lat: heading.head_lat,
+    head_lng: heading.head_lng,
     type: normalizeDeviceType(
       pickFirst(payload.node_type, payload.type, existing?.type),
     ),

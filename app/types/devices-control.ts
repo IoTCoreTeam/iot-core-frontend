@@ -31,6 +31,10 @@ export type DeviceRow = {
   mac?: string | null;
   lat?: number | null;
   lng?: number | null;
+  heading_deg?: number | null;
+  heading_cardinal?: string | null;
+  head_lat?: number | null;
+  head_lng?: number | null;
   type?: string | null;
   status: DeviceRowStatus;
   registered?: boolean;
@@ -86,6 +90,10 @@ export type NodeInfo = {
   mac_address?: string | null;
   lat?: number | null;
   lng?: number | null;
+  heading_deg?: number | null;
+  heading_cardinal?: string | null;
+  head_lat?: number | null;
+  head_lng?: number | null;
   status?: string | null;
   registered?: boolean | null;
   inside_map?: boolean | null;
