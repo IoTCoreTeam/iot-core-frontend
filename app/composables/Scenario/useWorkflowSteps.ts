@@ -130,7 +130,7 @@ export function useWorkflowSteps<TNodeData extends WorkflowNodeDataBase>(params:
       title: `${label} OFF (Delayed)`,
       status: "process",
       description: delay > 0 ? `Scheduled after ${delay}s` : "Scheduled",
-      controlUrlId: controlUrlId || lastNodeContext.value?.controlUrlId ?? null,
+      controlUrlId: controlUrlId || (lastNodeContext.value?.controlUrlId ?? null),
     };
     workflowSteps.value.push(step);
     const idx = workflowSteps.value.length - 1;

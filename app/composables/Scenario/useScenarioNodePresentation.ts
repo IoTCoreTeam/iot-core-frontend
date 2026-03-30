@@ -32,20 +32,34 @@ export function useScenarioNodePresentation(params: {
   function isMissingControlUrl(controlUrlId?: string | null) {
     if (!params.hasLoadedControlUrls.value) return false;
     if (!controlUrlId) return false;
-    return !params.controlUrlOptions.value.some((item) => item?.id === controlUrlId);
+    return !params.controlUrlOptions.value.some((item) => {
+      const baseControlUrlId = String(item?.control_url_id ?? item?.id ?? "").trim();
+      return baseControlUrlId === controlUrlId;
+    });
   }
 
   function updateNodeLabel(node: Node<ScenarioNodeData>) {
     if (node.data?.kind === "action") {
       const controlUrlId = node.data?.control_url_id ?? "";
       const isMissing = isMissingControlUrl(controlUrlId);
-      const selected = params.controlUrlOptions.value.find((item) => item.id === controlUrlId);
+      const jsonCommandId = String(node.data?.json_command_id ?? "").trim();
+      const selected =
+        params.controlUrlOptions.value.find((item) => {
+          const baseControlUrlId = String(item?.control_url_id ?? item?.id ?? "").trim();
+          if (baseControlUrlId !== controlUrlId) {
+            return false;
+          }
+          if (!jsonCommandId) {
+            return !String(item?.json_command_id ?? "").trim();
+          }
+          return String(item?.json_command_id ?? "").trim() === jsonCommandId;
+        }) ??
+        params.controlUrlOptions.value.find((item) => {
+          const baseControlUrlId = String(item?.control_url_id ?? item?.id ?? "").trim();
+          return baseControlUrlId === controlUrlId;
+        });
       const inputType = normalizeControlInputType(selected?.input_type);
-      const jsonCommandName =
-        inputType === "json_command"
-          ? selected?.json_commands?.find((item) => String(item?.name ?? "").trim().length > 0)?.name
-          : null;
-      const name = jsonCommandName || selected?.name || "Action";
+      const name = selected?.name || "Action";
       const duration = node.data?.duration_seconds ?? 0;
       const inputKind = inputType;
       const actionValue = node.data?.action_value;

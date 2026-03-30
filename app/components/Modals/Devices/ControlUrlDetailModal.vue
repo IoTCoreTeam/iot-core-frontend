@@ -337,6 +337,12 @@ const authStore = useAuthStore();
 const isSavingAnalog = ref(false);
 const isLoadingAnalog = ref(false);
 const analogSignal = ref<ControlAnalogSignal | null>(null);
+const loadedJsonCommands = ref<Array<{
+  id?: string | null;
+  control_url_id?: string | null;
+  name?: string | null;
+  command?: unknown;
+}>>([]);
 const analogForm = reactive({
   min_value: "",
   max_value: "",
@@ -360,6 +366,9 @@ const modalTitle = computed(() =>
 );
 
 const jsonCommands = computed(() => {
+  if (loadedJsonCommands.value.length > 0) {
+    return loadedJsonCommands.value;
+  }
   const item = props.controlUrl;
   if (!item) return [];
   if (Array.isArray(item.json_commands)) return item.json_commands;
@@ -387,6 +396,44 @@ function formatCommandPayload(value: unknown) {
 function resolveAnalogSignal(item: ControlUrlItem | null) {
   if (!item) return null;
   return item.analog_signal ?? item.analogSignal ?? null;
+}
+
+async function fetchJsonCommands(controlUrlId: string) {
+  const authorization = authStore.authorizationHeader;
+  if (!authorization || !apiConfig.controlModule) {
+    loadedJsonCommands.value = [];
+    return;
+  }
+
+  try {
+    const endpoint = `${apiConfig.controlModule.replace(/\/$/, "")}/control-json-commands?control_url_id=${encodeURIComponent(controlUrlId)}&per_page=500`;
+    const response = await fetch(endpoint, {
+      headers: {
+        Authorization: authorization,
+        Accept: "application/json",
+      },
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(payload?.message ?? "Failed to load control json commands.");
+    }
+    const rows = Array.isArray(payload?.data?.data)
+      ? payload.data.data
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload)
+          ? payload
+          : [];
+    loadedJsonCommands.value = rows.map((row: any) => ({
+      id: row?.id ? String(row.id) : null,
+      control_url_id: row?.control_url_id ? String(row.control_url_id) : controlUrlId,
+      name: row?.name ? String(row.name) : null,
+      command: row?.command ?? null,
+    }));
+  } catch (error: any) {
+    loadedJsonCommands.value = [];
+    message.error(error?.message ?? "Failed to load control json commands.");
+  }
 }
 
 function hydrateAnalogForm(signal: ControlAnalogSignal | null) {
@@ -521,12 +568,31 @@ async function fetchAnalogSignal(controlUrlId: string) {
 watch(
   () => props.controlUrl,
   (value) => {
+    loadedJsonCommands.value = [];
     analogSignal.value = resolveAnalogSignal(value ?? null);
     hydrateAnalogForm(analogSignal.value);
     if (props.modelValue && isAnalog.value && value?.id) {
       fetchAnalogSignal(value.id);
     }
+    if (props.modelValue && isJsonCommand.value && value?.id) {
+      fetchJsonCommands(value.id);
+    }
   },
   { immediate: true },
+);
+
+watch(
+  () => props.modelValue,
+  (visible) => {
+    if (!visible) return;
+    const current = props.controlUrl;
+    if (!current?.id) return;
+    if (isAnalog.value) {
+      fetchAnalogSignal(current.id);
+    }
+    if (isJsonCommand.value) {
+      fetchJsonCommands(current.id);
+    }
+  },
 );
 </script>

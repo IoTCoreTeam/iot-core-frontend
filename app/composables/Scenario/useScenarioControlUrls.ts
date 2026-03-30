@@ -38,6 +38,15 @@ function parseJsonObject(value: unknown) {
   return null;
 }
 
+function resolveJsonCommandMode(value: unknown) {
+  const payload = parseJsonObject(value);
+  const mode = String(payload?.mode ?? "").trim().toLowerCase();
+  if (mode === "digital" || mode === "analog") {
+    return mode;
+  }
+  return "json_command";
+}
+
 export function useScenarioControlUrls(params: {
   controlModuleBase: Ref<string>;
   authorizationHeader: Ref<string | null | undefined>;
@@ -48,8 +57,9 @@ export function useScenarioControlUrls(params: {
   const controlUrlLabelMap = computed(() => {
     const map = new Map<string, string>();
     controlUrlOptions.value.forEach((item) => {
-      if (item?.id) {
-        map.set(item.id, item.name || item.id);
+      const key = String(item?.control_url_id ?? item?.id ?? "").trim();
+      if (key) {
+        map.set(key, item.name || key);
       }
     });
     return map;
@@ -58,21 +68,7 @@ export function useScenarioControlUrls(params: {
   function resolveControlInputTypeById(controlUrlId?: string | null) {
     if (!controlUrlId) return null;
     const selected = controlUrlOptions.value.find((item) => item.id === controlUrlId);
-    const inputType = normalizeControlInputType(selected?.input_type);
-    if (inputType !== "json_command") {
-      return inputType;
-    }
-
-    const commands = Array.isArray(selected?.json_commands) ? selected.json_commands : [];
-    for (const row of commands) {
-      const commandPayload = parseJsonObject(row?.command);
-      const mode = String(commandPayload?.mode ?? "").trim().toLowerCase();
-      if (mode === "digital" || mode === "analog") {
-        return mode;
-      }
-    }
-
-    return inputType;
+    return normalizeControlInputType(selected?.input_type);
   }
 
   function resolveControlNodeId(item: ControlUrlOption) {
@@ -86,7 +82,10 @@ export function useScenarioControlUrls(params: {
   function isMissingControlUrl(controlUrlId?: string | null) {
     if (!hasLoadedControlUrls.value) return false;
     if (!controlUrlId) return false;
-    return !controlUrlOptions.value.some((item) => item?.id === controlUrlId);
+    return !controlUrlOptions.value.some((item) => {
+      const baseControlUrlId = String(item?.control_url_id ?? item?.id ?? "").trim();
+      return baseControlUrlId === controlUrlId;
+    });
   }
 
   function extractRows(payload: any) {
@@ -187,12 +186,59 @@ export function useScenarioControlUrls(params: {
         } as ControlUrlOption;
       });
 
-      controlUrlOptions.value = merged.filter((row: any) => {
+      const filteredRows = merged.filter((row: any) => {
         if (row?.deleted_at != null) return false;
         if (row?.node?.deleted_at != null) return false;
         if (row?.node?.gateway?.deleted_at != null) return false;
         return true;
       });
+
+      const expandedRows: ControlUrlOption[] = [];
+      filteredRows.forEach((row: any) => {
+        const baseControlUrlId = String(row?.id ?? "").trim();
+        const inputType = normalizeControlInputType(row?.input_type);
+        const commands = Array.isArray(row?.json_commands) ? row.json_commands : [];
+
+        if (inputType !== "json_command") {
+          expandedRows.push({
+            ...row,
+            id: baseControlUrlId,
+            control_url_id: baseControlUrlId,
+          });
+          return;
+        }
+
+        if (!commands.length) {
+          expandedRows.push({
+            ...row,
+            id: baseControlUrlId,
+            control_url_id: baseControlUrlId,
+            json_command_id: null,
+            json_command_name: null,
+          });
+          return;
+        }
+
+        commands.forEach((command: any, index: number) => {
+          const jsonCommandId = String(command?.id ?? "").trim() || null;
+          const jsonCommandName = String(command?.name ?? "").trim() || null;
+          const optionId = jsonCommandId
+            ? `${baseControlUrlId}::${jsonCommandId}`
+            : `${baseControlUrlId}::${index + 1}`;
+          expandedRows.push({
+            ...row,
+            id: optionId,
+            control_url_id: baseControlUrlId,
+            name: jsonCommandName ?? row?.name ?? baseControlUrlId,
+            input_type: resolveJsonCommandMode(command?.command),
+            json_command_id: jsonCommandId,
+            json_command_name: jsonCommandName,
+            json_commands: [command],
+          });
+        });
+      });
+
+      controlUrlOptions.value = expandedRows;
     } catch (error: any) {
       message.error(error?.message ?? "Failed to load control urls.");
     } finally {

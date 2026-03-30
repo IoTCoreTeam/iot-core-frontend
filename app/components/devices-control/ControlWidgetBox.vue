@@ -229,12 +229,19 @@ type ControlUrlItem = {
 
 type ControlWidget = {
   id: string;
+  baseId: string;
   controllerId?: string | null;
   gatewayName: string;
   nodeName: string;
   controllerName: string;
   isOn: boolean;
   resolvedInputType: "digital" | "analog" | null;
+  selectedJsonCommand?: {
+    id?: string | null;
+    control_url_id?: string | null;
+    name?: string | null;
+    command?: unknown;
+  } | null;
   raw: ControlUrlItem;
 };
 
@@ -278,21 +285,64 @@ const PENDING_TIMEOUT_MS = 10000;
 const isDetailOpen = ref(false);
 const selectedWidget = ref<ControlWidget | null>(null);
 
-const widgets = computed<ControlWidget[]>(() =>
-  (props.items ?? []).map((item) => ({
-    id: item.id,
-    controllerId: item.controller_id ?? null,
-    gatewayName:
+const widgets = computed((): ControlWidget[] => {
+  const rows = props.items ?? [];
+  const result: ControlWidget[] = [];
+
+  rows.forEach((item) => {
+    const baseId = String(item.id ?? "").trim();
+    if (!baseId) return;
+
+    const gatewayName =
       item.node?.gateway?.name ??
       item.node?.gateway?.external_id ??
-      "N/A",
-    nodeName: item.node?.name ?? item.node?.external_id ?? "N/A",
-    controllerName: item.name ?? item.controller_id ?? item.id ?? "N/A",
-    isOn: false,
-    resolvedInputType: resolveWidgetInputType(item),
-    raw: item,
-  })),
-);
+      "N/A";
+    const nodeName = item.node?.name ?? item.node?.external_id ?? "N/A";
+    const inputType = normalizeInputType(item.input_type);
+    const commands = resolveJsonCommandList(item);
+
+    if (inputType === "json_command" && commands.length > 0) {
+      commands.forEach((command, index) => {
+        const commandId = String(command?.id ?? "").trim();
+        const widgetId = commandId ? `${baseId}::${commandId}` : `${baseId}::${index + 1}`;
+        const commandName = String(command?.name ?? "").trim();
+        const fallbackControllerName =
+          item.name ??
+          item.controller_id ??
+          item.id ??
+          "N/A";
+        result.push({
+          id: widgetId,
+          baseId,
+          controllerId: item.controller_id ?? null,
+          gatewayName,
+          nodeName,
+          controllerName: commandName || fallbackControllerName,
+          isOn: false,
+          resolvedInputType: resolveWidgetInputType(item, command),
+          selectedJsonCommand: command ?? null,
+          raw: item,
+        });
+      });
+      return;
+    }
+
+    result.push({
+      id: baseId,
+      baseId,
+      controllerId: item.controller_id ?? null,
+      gatewayName,
+      nodeName,
+      controllerName: item.name ?? item.controller_id ?? item.id ?? "N/A",
+      isOn: false,
+      resolvedInputType: resolveWidgetInputType(item, null),
+      selectedJsonCommand: null,
+      raw: item,
+    });
+  });
+
+  return result;
+});
 
 function normalizeInputType(value?: string | null) {
   if (!value) return null;
@@ -340,12 +390,27 @@ function resolveJsonMode(item: ControlUrlItem): "digital" | "analog" | null {
   return null;
 }
 
-function resolveWidgetInputType(item: ControlUrlItem): "digital" | "analog" | null {
+function resolveWidgetInputType(
+  item: ControlUrlItem,
+  selectedJsonCommand: {
+    id?: string | null;
+    control_url_id?: string | null;
+    name?: string | null;
+    command?: unknown;
+  } | null,
+): "digital" | "analog" | null {
   const inputType = normalizeInputType(item.input_type);
   if (inputType === "digital" || inputType === "analog") {
     return inputType;
   }
   if (inputType === "json_command") {
+    if (selectedJsonCommand) {
+      const payload = parseJsonObject(selectedJsonCommand.command);
+      const modeValue = String(payload?.mode ?? "").trim().toLowerCase();
+      if (modeValue === "digital" || modeValue === "analog") {
+        return modeValue;
+      }
+    }
     return resolveJsonMode(item);
   }
   return null;
@@ -401,7 +466,7 @@ function resolveControllerId(widget: ControlWidget) {
 }
 
 function resolveControllerStateValue(state: ControllerState) {
-  const raw = state.status ?? state.state ?? state.value ?? null;
+  const raw = state.state ?? state.status ?? state.value ?? null;
   if (typeof raw === "boolean") return raw;
   if (typeof raw === "number") return raw !== 0;
   if (typeof raw === "string") {
@@ -416,6 +481,66 @@ function resolveControllerStateValue(state: ControllerState) {
   return null;
 }
 
+function normalizeCommandValue(value: unknown) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (["move ahead", "move_ahead", "ahead"].includes(normalized)) {
+    return "forward";
+  }
+  if (["move backward", "move_backward", "back"].includes(normalized)) {
+    return "backward";
+  }
+  if (["turn left", "turn_left", "move left", "move_left"].includes(normalized)) {
+    return "left";
+  }
+  if (["turn right", "turn_right", "move right", "move_right"].includes(normalized)) {
+    return "right";
+  }
+  if (["off", "idle"].includes(normalized)) {
+    return "stop";
+  }
+  return normalized;
+}
+
+function resolveExpectedJsonCommandValue(widget: ControlWidget) {
+  const commandPayload = parseJsonObject(widget.selectedJsonCommand?.command);
+  if (!commandPayload) return null;
+  return (
+    normalizeCommandValue(commandPayload.value) ??
+    normalizeCommandValue(commandPayload.direction)
+  );
+}
+
+function resolveJsonCommandState(widget: ControlWidget, state: ControllerState) {
+  if (normalizeInputType(widget.raw.input_type) !== "json_command") {
+    return null;
+  }
+  const isPowerOn = resolveControllerStateValue(state);
+  if (isPowerOn !== true) {
+    return false;
+  }
+  const expected = resolveExpectedJsonCommandValue(widget);
+  if (!expected) {
+    return isPowerOn;
+  }
+  const current = normalizeCommandValue(state.value ?? state.state ?? state.status ?? null);
+  if (!current) {
+    return false;
+  }
+  return current === expected;
+}
+
+function resolveMatchedControllerState(
+  controllers: ControllerState[],
+  controllerId: string,
+) {
+  return (
+    controllers.find((controller) => normalizeKey(controller.id) === controllerId) ??
+    controllers.find((controller) => normalizeKey(controller.name) === controllerId) ??
+    null
+  );
+}
+
 function resolveSseState(widget: ControlWidget) {
   const nodeKey = resolveNodeKey(widget);
   if (!nodeKey) return null;
@@ -425,10 +550,12 @@ function resolveSseState(widget: ControlWidget) {
   }
   const controllerId = resolveControllerId(widget);
   if (!controllerId) return null;
-  const match = controllers.find(
-    (controller) => normalizeKey(controller.id) === controllerId,
-  );
+  const match = resolveMatchedControllerState(controllers, controllerId);
   if (!match) return null;
+  const jsonCommandState = resolveJsonCommandState(widget, match);
+  if (typeof jsonCommandState === "boolean") {
+    return jsonCommandState;
+  }
   return resolveControllerStateValue(match);
 }
 

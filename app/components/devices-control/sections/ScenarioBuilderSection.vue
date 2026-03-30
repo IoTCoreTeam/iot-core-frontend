@@ -174,7 +174,7 @@
               >
                 <td class="px-3 py-2">
                   <div class="font-medium text-gray-700">
-                    {{ item.input_type === "json_command" ? (item.json_commands?.[0]?.name || item.name || item.id) : (item.name || item.id) }}
+                    {{ resolveControlUrlDisplayName(item) }}
                   </div>
                   <div class="text-[11px] text-gray-400">{{ item.url || "—" }}</div>
                 </td>
@@ -483,6 +483,8 @@ type NodeData = {
   label?: ScenarioNodeData["label"];
   kind?: ScenarioNodeData["kind"];
   control_url_id?: ScenarioNodeData["control_url_id"];
+  json_command_id?: ScenarioNodeData["json_command_id"];
+  json_command_name?: ScenarioNodeData["json_command_name"];
   duration_seconds?: ScenarioNodeData["duration_seconds"];
   action_value?: ScenarioNodeData["action_value"];
   metric_key?: ScenarioNodeData["metric_key"];
@@ -636,6 +638,10 @@ function resolveMetricNode(metric: any) {
   return nodes.join(", ");
 }
 
+function resolveControlUrlDisplayName(item: any) {
+  return item?.name || item?.id || "N/A";
+}
+
 function handleDragStart(event: DragEvent, type: string) {
   if (!event.dataTransfer) return;
   event.dataTransfer.setData("application/vueflow", type);
@@ -784,12 +790,34 @@ function saveFlow() {
   markCanvasAsSaved();
 }
 
+function resolveSelectedControlOptionId(node: NodeData | undefined) {
+  const baseControlUrlId = String(node?.control_url_id ?? "").trim();
+  if (!baseControlUrlId) return "";
+  const jsonCommandId = String(node?.json_command_id ?? "").trim();
+
+  if (jsonCommandId) {
+    const matched = controlUrlOptions.value.find((item) => {
+      const optionBaseId = String(item?.control_url_id ?? item?.id ?? "").trim();
+      const optionJsonCommandId = String(item?.json_command_id ?? "").trim();
+      return optionBaseId === baseControlUrlId && optionJsonCommandId === jsonCommandId;
+    });
+    if (matched?.id) return matched.id;
+  }
+
+  const fallback = controlUrlOptions.value.find((item) => {
+    const optionBaseId = String(item?.control_url_id ?? item?.id ?? "").trim();
+    return optionBaseId === baseControlUrlId;
+  });
+  return fallback?.id ?? baseControlUrlId;
+}
+
 function handleNodeClick(event: { node: Node<NodeData> }) {
   const node = event.node;
   const kind = node.data?.kind;
   if (kind === "action") {
     activeNode.value = node;
-    const controlInputKind = resolveControlInputTypeById(node.data?.control_url_id);
+    const selectedOptionId = resolveSelectedControlOptionId(node.data);
+    const controlInputKind = resolveControlInputTypeById(selectedOptionId);
     const rawActionValue = node.data?.action_value;
     let actionValue: "on" | "off" | number | "" =
       typeof rawActionValue === "number" || rawActionValue === "on" || rawActionValue === "off"
@@ -801,7 +829,7 @@ function handleNodeClick(event: { node: Node<NodeData> }) {
       actionValue = actionValue === "off" || actionValue === "on" ? actionValue : "on";
     }
     actionForm.value = {
-      control_url_id: node.data?.control_url_id ?? "",
+      control_url_id: selectedOptionId,
       duration_seconds: node.data?.duration_seconds ?? 5,
       action_value: actionValue,
     };
@@ -853,6 +881,18 @@ function saveActionNode() {
     message.warning("Please select a control URL.");
     return;
   }
+  const selectedOption = selectedControlUrl.value;
+  const resolvedControlUrlId = String(
+    selectedOption?.control_url_id ?? selectedOption?.id ?? "",
+  ).trim();
+  if (!resolvedControlUrlId) {
+    message.warning("Selected control URL is invalid.");
+    return;
+  }
+  const resolvedJsonCommandId = String(selectedOption?.json_command_id ?? "").trim();
+  const resolvedJsonCommandName = String(
+    selectedOption?.json_command_name ?? selectedOption?.name ?? "",
+  ).trim();
   const inputKind = resolveControlInputTypeById(actionForm.value.control_url_id);
   let actionValue: "on" | "off" | number | null = null;
   if (inputKind === "analog") {
@@ -874,7 +914,9 @@ function saveActionNode() {
   target.data = {
     ...(target.data ?? {}),
     kind: "action",
-    control_url_id: actionForm.value.control_url_id,
+    control_url_id: resolvedControlUrlId,
+    json_command_id: resolvedJsonCommandId || undefined,
+    json_command_name: resolvedJsonCommandName || undefined,
     duration_seconds: Number(actionForm.value.duration_seconds || 0),
     action_value: actionValue ?? undefined,
   };

@@ -263,6 +263,15 @@ type ControlUrlItem = {
   } | null;
 };
 
+type JsonCommandRow = {
+  id?: string | null;
+  control_url_id?: string | null;
+  name?: string | null;
+  command?: unknown;
+  controlUrl?: any;
+  control_url?: any;
+};
+
 type MapCanvasExpose = {
   managedAreas: Ref<any[]> | any[];
   isAreasLoading: Ref<boolean> | boolean;
@@ -356,6 +365,61 @@ function resolveActionType(item: ControlUrlItem) {
   return normalizeActionType(item.input_type) ?? undefined;
 }
 
+function extractRows(payload: any) {
+  if (Array.isArray(payload?.data?.data)) return payload.data.data;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload)) return payload;
+  return [];
+}
+
+function mergeJsonCommandsToControlUrls(
+  controlUrlRows: ControlUrlItem[],
+  jsonCommandRows: JsonCommandRow[],
+) {
+  const jsonCommandsByControlUrlId = new Map<
+    string,
+    Array<{ id?: string | null; control_url_id?: string | null; name?: string | null; command?: unknown }>
+  >();
+
+  jsonCommandRows.forEach((row) => {
+    const controlUrlId = String(
+      row?.control_url_id ?? row?.controlUrl?.id ?? row?.control_url?.id ?? "",
+    ).trim();
+    if (!controlUrlId) return;
+    const list = jsonCommandsByControlUrlId.get(controlUrlId) ?? [];
+    list.push({
+      id: row?.id ? String(row.id) : null,
+      control_url_id: controlUrlId,
+      name: row?.name ? String(row.name) : null,
+      command: row?.command ?? null,
+    });
+    jsonCommandsByControlUrlId.set(controlUrlId, list);
+  });
+
+  return controlUrlRows.map((row) => {
+    const id = String(row?.id ?? "").trim();
+    const existingList = Array.isArray(row?.json_commands)
+      ? row.json_commands
+      : Array.isArray(row?.jsonCommands)
+        ? row.jsonCommands
+        : [];
+    const mergedList = [
+      ...existingList,
+      ...(jsonCommandsByControlUrlId.get(id) ?? []),
+    ];
+    const dedupMap = new Map<string, { id?: string | null; control_url_id?: string | null; name?: string | null; command?: unknown }>();
+    mergedList.forEach((item, index) => {
+      const dedupKey = String(item?.id ?? `${item?.name ?? ""}:${index}`);
+      dedupMap.set(dedupKey, item);
+    });
+
+    return {
+      ...row,
+      json_commands: Array.from(dedupMap.values()),
+    };
+  });
+}
+
 async function fetchControlUrls() {
   if (!apiConfig.controlModule) return;
   const authorization = authStore.authorizationHeader;
@@ -366,23 +430,40 @@ async function fetchControlUrls() {
   isLoadingControlUrls.value = true;
   controlUrlLoadError.value = null;
   try {
-    const endpoint = `${apiConfig.controlModule.replace(/\/$/, "")}/control-urls?include=gateway,analog_signal,json_commands&per_page=100`;
-    const response = await fetch(endpoint, {
-      headers: {
-        Authorization: authorization,
-        Accept: "application/json",
-      },
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new Error(payload?.message ?? "Failed to load control urls.");
+    const base = apiConfig.controlModule.replace(/\/$/, "");
+    const controlUrlsEndpoint = `${base}/control-urls?include=gateway,analog_signal,json_commands&per_page=500`;
+    const jsonCommandsEndpoint = `${base}/control-json-commands?per_page=500`;
+
+    const [controlUrlsResponse, jsonCommandsResponse] = await Promise.all([
+      fetch(controlUrlsEndpoint, {
+        headers: {
+          Authorization: authorization,
+          Accept: "application/json",
+        },
+      }),
+      fetch(jsonCommandsEndpoint, {
+        headers: {
+          Authorization: authorization,
+          Accept: "application/json",
+        },
+      }),
+    ]);
+
+    const controlUrlsPayload = await controlUrlsResponse.json().catch(() => null);
+    if (!controlUrlsResponse.ok) {
+      throw new Error(controlUrlsPayload?.message ?? "Failed to load control urls.");
     }
-    const rows = Array.isArray(payload?.data)
-      ? payload.data
-      : Array.isArray(payload)
-        ? payload
-        : [];
-    controlUrlItems.value = (rows as ControlUrlItem[]).filter((row: any) => {
+
+    const jsonCommandsPayload = await jsonCommandsResponse.json().catch(() => null);
+    if (!jsonCommandsResponse.ok) {
+      throw new Error(jsonCommandsPayload?.message ?? "Failed to load control json commands.");
+    }
+
+    const controlUrlRows = extractRows(controlUrlsPayload) as ControlUrlItem[];
+    const jsonCommandRows = extractRows(jsonCommandsPayload) as JsonCommandRow[];
+    const mergedRows = mergeJsonCommandsToControlUrls(controlUrlRows, jsonCommandRows);
+
+    controlUrlItems.value = mergedRows.filter((row: any) => {
       if (row?.deleted_at != null) return false;
       if (row?.node?.deleted_at != null) return false;
       if (row?.node?.gateway?.deleted_at != null) return false;
@@ -401,33 +482,67 @@ function handleAnalogSaved() {
   fetchControlUrls();
 }
 
-async function handleExecuteControlUrl(widget: { id: string; raw: ControlUrlItem }, nextState: boolean) {
+async function handleExecuteControlUrl(
+  widget: {
+    id: string;
+    baseId?: string;
+    raw: ControlUrlItem;
+    selectedJsonCommand?: {
+      id?: string | null;
+      name?: string | null;
+    } | null;
+  },
+  nextState: boolean,
+) {
   const authorization = authStore.authorizationHeader;
   if (!authorization) throw new Error("Missing authorization.");
   const url = widget.raw.url ?? "";
   if (!url) throw new Error("Missing control URL.");
   const actionType = resolveActionType(widget.raw);
   const device = String(widget.raw.name ?? "").trim();
-  await executeControlUrl(authorization, widget.id, {
+  const jsonCommandId = String(widget.selectedJsonCommand?.id ?? "").trim();
+  const jsonCommandName = String(widget.selectedJsonCommand?.name ?? "").trim();
+  const controlUrlId = String(widget.baseId ?? widget.id ?? "").trim();
+  if (!controlUrlId) throw new Error("Missing control URL id.");
+  await executeControlUrl(authorization, controlUrlId, {
     url,
     state: nextState ? "on" : "off",
     action_type: actionType,
     device: device || undefined,
+    json_command_id: jsonCommandId || undefined,
+    json_command_name: jsonCommandName || undefined,
   });
 }
 
-async function handleExecuteAnalog(widget: { id: string; raw: ControlUrlItem }, value: number) {
+async function handleExecuteAnalog(
+  widget: {
+    id: string;
+    baseId?: string;
+    raw: ControlUrlItem;
+    selectedJsonCommand?: {
+      id?: string | null;
+      name?: string | null;
+    } | null;
+  },
+  value: number,
+) {
   const authorization = authStore.authorizationHeader;
   if (!authorization) throw new Error("Missing authorization.");
   const url = widget.raw.url ?? "";
   if (!url) throw new Error("Missing control URL.");
   const actionType = resolveActionType(widget.raw);
   const device = String(widget.raw.name ?? "").trim();
-  await executeControlUrl(authorization, widget.id, {
+  const jsonCommandId = String(widget.selectedJsonCommand?.id ?? "").trim();
+  const jsonCommandName = String(widget.selectedJsonCommand?.name ?? "").trim();
+  const controlUrlId = String(widget.baseId ?? widget.id ?? "").trim();
+  if (!controlUrlId) throw new Error("Missing control URL id.");
+  await executeControlUrl(authorization, controlUrlId, {
     url,
     value,
     action_type: actionType,
     device: device || undefined,
+    json_command_id: jsonCommandId || undefined,
+    json_command_name: jsonCommandName || undefined,
   });
 }
 

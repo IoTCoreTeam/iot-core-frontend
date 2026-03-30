@@ -4,6 +4,8 @@ export type ControlDefinitionNode = {
   id: string | null;
   type: "start" | "action" | "condition" | "end";
   control_url_id?: string | null;
+  json_command_id?: string | null;
+  json_command_name?: string | null;
   duration_seconds?: number | null;
   action_value?: string | number | null;
   metric_key?: string | null;
@@ -26,6 +28,8 @@ export type ControlDefinition = {
 type ControlNodeData = {
   kind?: "start" | "action" | "condition" | "end";
   control_url_id?: string;
+  json_command_id?: string;
+  json_command_name?: string;
   duration_seconds?: number;
   action_value?: string | number;
   metric_key?: string;
@@ -67,6 +71,8 @@ export function formatControlDefinition(
       return {
         ...base,
         control_url_id: node.data?.control_url_id ?? null,
+        json_command_id: node.data?.json_command_id ?? null,
+        json_command_name: node.data?.json_command_name ?? null,
         duration_seconds:
           typeof node.data?.duration_seconds === "number"
             ? node.data.duration_seconds

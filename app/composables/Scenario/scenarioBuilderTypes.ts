@@ -4,6 +4,8 @@ export type ScenarioNodeData = {
   label?: string;
   kind?: "start" | "action" | "condition" | "end";
   control_url_id?: string;
+  json_command_id?: string;
+  json_command_name?: string;
   duration_seconds?: number;
   action_value?: string | number;
   metric_key?: string;
@@ -18,9 +20,12 @@ export type ScenarioDefinition = {
 
 export type ControlUrlOption = {
   id: string;
+  control_url_id?: string | null;
   name?: string | null;
   url?: string | null;
   input_type?: string | null;
+  json_command_id?: string | null;
+  json_command_name?: string | null;
   json_commands?: Array<{
     id?: string | null;
     control_url_id?: string | null;
