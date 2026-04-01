@@ -7,6 +7,11 @@
           class="px-4 device-control-tabs text-xs"
           size="small"
         >
+        <a-tab-pane key="map" tab="Map">
+            <div class="h-[60vh] min-h-[60vh]">
+              <DeviceMapCanvas ref="mapCanvasRef" class="w-full h-full" map-height="100%" />
+            </div>
+          </a-tab-pane>
           <a-tab-pane key="chart" tab="Chart">
             <div class="h-[60vh] min-h-[60vh]">
               <SingleMetricChart
@@ -16,11 +21,6 @@
                 :selected-timeframe="selectedTimeframe"
                 @update:selected-metric-key="handleMetricChange"
               />
-            </div>
-          </a-tab-pane>
-          <a-tab-pane key="map" tab="Map">
-            <div class="h-[60vh] min-h-[60vh]">
-              <DeviceMapCanvas ref="mapCanvasRef" class="w-full h-full" map-height="100%" />
             </div>
           </a-tab-pane>
         </a-tabs>

@@ -310,6 +310,11 @@ import {
   readPinnedSensorIds,
   writePinnedSensorIds,
 } from "~~/config/pinned-sensors";
+import {
+  fetchSensorInventoryRows,
+  isSoftDeletedInventoryRow,
+  type DeviceInventoryRow,
+} from "@/composables/DeviceRegistration/useDeviceInventory";
 import AdvancedFilterPanel, {
   type FilterFieldRow,
 } from "@/components/common/AdvancedFilterPanel.vue";
@@ -336,17 +341,7 @@ type SensorFilterState = {
   timestamp_to: string;
 };
 
-type SensorDeviceRow = {
-  id: string;
-  external_id?: string | null;
-  name?: string | null;
-  gateway_id?: string | null;
-  mac_address?: string | null;
-  ip_address?: string | null;
-  type?: string | null;
-  created_at?: string | null;
-  deleted_at?: string | null;
-};
+type SensorDeviceRow = DeviceInventoryRow;
 
 type SensorDeviceFilterState = {
   external_id: string;
@@ -358,8 +353,6 @@ type SensorDeviceFilterState = {
 
 const IOT_OFFSET_MS = 7 * 60 * 60 * 1000;
 const SERVER_BASE_URL = (apiConfig.server || "").replace(/\/$/, "");
-const CONTROL_MODULE_BASE_URL = (apiConfig.controlModule || "").replace(/\/$/, "");
-
 const authStore = useAuthStore();
 const { metrics } = useMetrics();
 const activeTab = ref<"sensor-data" | "sensor-device">("sensor-data");
@@ -595,41 +588,6 @@ function sensorDataRowKey(row: SensorReadingRow) {
   return `${objectId}-${row.sensor_id ?? ""}-${row.timestamp ?? ""}`;
 }
 
-function normalizeIndexRows(payload: any) {
-  return Array.isArray(payload?.data)
-    ? payload.data
-    : Array.isArray(payload)
-      ? payload
-      : [];
-}
-
-async function fetchAllPages(endpoint: string, authorization: string) {
-  const allRows: any[] = [];
-  let page = 1;
-  let lastPage = 1;
-
-  do {
-    const separator = endpoint.includes("?") ? "&" : "?";
-    const pagedEndpoint = `${endpoint}${separator}per_page=200&page=${page}`;
-    const response = await fetch(pagedEndpoint, {
-      headers: {
-        Authorization: authorization,
-        Accept: "application/json",
-      },
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new Error(payload?.message ?? "Failed to load rows.");
-    }
-
-    allRows.push(...normalizeIndexRows(payload));
-    lastPage = Number(payload?.last_page ?? payload?.meta?.last_page ?? 1);
-    page += 1;
-  } while (page <= lastPage);
-
-  return allRows;
-}
-
 function handleSensorDataFilterModelUpdate(value: Record<string, string>) {
   Object.assign(sensorDataFilters, value);
 }
@@ -749,20 +707,6 @@ function recalculateSensorDevicePagination() {
   }
 }
 
-function mapSensorDeviceRow(row: any): SensorDeviceRow {
-  return {
-    id: String(row?.id ?? row?.external_id ?? ""),
-    external_id: row?.external_id ?? null,
-    name: row?.name ?? null,
-    gateway_id: row?.gateway_id ?? null,
-    mac_address: row?.mac_address ?? null,
-    ip_address: row?.ip_address ?? null,
-    type: row?.type ?? null,
-    created_at: row?.created_at ?? null,
-    deleted_at: row?.deleted_at ?? null,
-  };
-}
-
 function resolveGatewayDisplayId(row: SensorDeviceRow) {
   const gatewayUuid = String(row.gateway_id ?? "");
   if (!gatewayUuid) return "-";
@@ -770,7 +714,7 @@ function resolveGatewayDisplayId(row: SensorDeviceRow) {
 }
 
 function isSoftDeletedSensorDevice(row: SensorDeviceRow) {
-  return Boolean(row.deleted_at);
+  return isSoftDeletedInventoryRow(row);
 }
 
 function getSensorPinKey(row: SensorDeviceRow) {
@@ -836,7 +780,7 @@ async function fetchSensorDataRows() {
 }
 
 async function fetchSensorDeviceRows() {
-  if (!import.meta.client || !CONTROL_MODULE_BASE_URL) return;
+  if (!import.meta.client) return;
 
   const authorization = authStore.authorizationHeader;
   if (!authorization) {
@@ -847,36 +791,9 @@ async function fetchSensorDeviceRows() {
 
   isSensorDeviceLoading.value = true;
   try {
-    const nodesEndpoint = `${CONTROL_MODULE_BASE_URL}/nodes?type=sensor&include=all`;
-    const gatewaysEndpoint = `${CONTROL_MODULE_BASE_URL}/gateways?include=all`;
-    const [rows, gatewayRows] = await Promise.all([
-      fetchAllPages(nodesEndpoint, authorization),
-      fetchAllPages(gatewaysEndpoint, authorization),
-    ]);
-
-    const nextGatewayMap: Record<string, string> = {};
-    gatewayRows.forEach((gateway: any) => {
-      if (gateway?.id) {
-        nextGatewayMap[String(gateway.id)] = String(gateway?.external_id ?? gateway.id);
-      }
-    });
-    gatewayExternalIdMap.value = nextGatewayMap;
-
-    sensorDeviceRows.value = rows
-      .map(mapSensorDeviceRow)
-      .filter((row) => normalizeText(row.type) === "sensor")
-      .sort((a, b) => {
-        const aDeleted = isSoftDeletedSensorDevice(a);
-        const bDeleted = isSoftDeletedSensorDevice(b);
-        if (aDeleted !== bDeleted) {
-          return aDeleted ? 1 : -1;
-        }
-
-        return String(a.external_id ?? "").localeCompare(String(b.external_id ?? ""), undefined, {
-          numeric: true,
-          sensitivity: "base",
-        });
-      });
+    const { sensorRows, gatewayMap } = await fetchSensorInventoryRows(authorization);
+    gatewayExternalIdMap.value = gatewayMap;
+    sensorDeviceRows.value = sensorRows;
 
     recalculateSensorDevicePagination();
   } catch (error) {

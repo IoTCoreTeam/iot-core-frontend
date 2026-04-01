@@ -208,19 +208,17 @@
                           <p class="text-xs truncate">{{ row.mac || "N/A" }}</p>
                         </template>
                         <template v-else-if="column.key === 'status'">
-                          <div
-                            class="text-xs font-semibold uppercase"
-                            :class="statusTextColorClass(row.status)"
-                          >
-                            {{ formatDeviceStatus(row.status) }}
+                          <div class="flex items-center">
+                            <span :class="statusBadgeClass(row.status)">
+                              {{ formatDeviceStatus(row.status) }}
+                            </span>
                           </div>
                         </template>
                         <template v-else-if="column.key === 'registered'">
-                          <div
-                            class="text-xs font-semibold uppercase"
-                            :class="registrationTextColorClass(row.registered)"
-                          >
-                            {{ formatRegistrationStatus(row.registered) }}
+                          <div class="flex items-center">
+                            <span :class="registeredBadgeClass(row.registered)">
+                              {{ formatRegistrationStatus(row.registered) }}
+                            </span>
                           </div>
                         </template>
                         <template v-else-if="column.key === 'actions'">
@@ -559,81 +557,14 @@
       :row="selectedCommandSetupRow"
       @close="closeCommandSetupDetail"
     />
-    <BaseModal
+    <EditRegisteredControlUrlModal
       :model-value="isRegisteredControlUrlEditOpen"
       title="Edit Registered Control URL"
-      max-width="max-w-2xl"
-      panel-class="p-5 shadow-xl"
-      @request-close="closeRegisteredControlUrlEdit"
-    >
-      <div class="space-y-3 text-xs">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div class="flex flex-col gap-1">
-            <label class="text-gray-600 font-medium">Controller ID</label>
-            <input
-              v-model="registeredControlUrlEditForm.controller_id"
-              type="text"
-              class="border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-            />
-          </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-gray-600 font-medium">Node External ID</label>
-            <input
-              :value="registeredControlUrlEditForm.node_external_id"
-              type="text"
-              class="border border-gray-300 rounded px-2 py-1.5 bg-gray-50 text-gray-500"
-              disabled
-            />
-          </div>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div class="flex flex-col gap-1">
-            <label class="text-gray-600 font-medium">Control URL Name</label>
-            <input
-              v-model="registeredControlUrlEditForm.name"
-              type="text"
-              class="border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-            />
-          </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-gray-600 font-medium">Input Type</label>
-            <input
-              v-model="registeredControlUrlEditForm.input_type"
-              type="text"
-              class="border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-            />
-          </div>
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-gray-600 font-medium">URL</label>
-          <input
-            v-model="registeredControlUrlEditForm.url"
-            type="text"
-            class="border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-          />
-        </div>
-      </div>
-      <template #footer>
-        <div class="flex items-center justify-end gap-2">
-          <button
-            type="button"
-            class="px-3 py-1.5 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
-            :disabled="isSavingRegisteredControlUrlEdit"
-            @click="closeRegisteredControlUrlEdit"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
-            :disabled="isSavingRegisteredControlUrlEdit"
-            @click="saveRegisteredControlUrlEdit"
-          >
-            {{ isSavingRegisteredControlUrlEdit ? "Saving..." : "Update" }}
-          </button>
-        </div>
-      </template>
-    </BaseModal>
+      :form="registeredControlUrlEditForm"
+      :is-saving="isSavingRegisteredControlUrlEdit"
+      @close="closeRegisteredControlUrlEdit"
+      @save="saveRegisteredControlUrlEdit"
+    />
     <AddCommandSetupModal
       :model-value="isCommandSetupModalOpen"
       :is-editing="isEditingCommandSetup"
@@ -687,14 +618,20 @@ import {
 } from "@/composables/DeviceRegistration/SSEHandle";
 import { useLoadDataRow } from "@/composables/DeviceRegistration/loadDataRow";
 import { useDeviceFilter } from "@/composables/DeviceRegistration/DeviceFilter";
-import { useRegisteredControlUrlTab } from "@/composables/DeviceRegistration/useRegisteredControlUrlTab";
-import { useCommandSetupTab } from "@/composables/DeviceRegistration/useCommandSetupTab";
+import { useControlDataTabs } from "@/composables/DeviceRegistration/useControlDataTabs";
+import {
+  buildExternalToUuidMap,
+  fetchGatewayInventoryRows,
+  fetchNodeInventoryRows,
+  mapGatewayInventoryToRegisteredDeviceRow,
+  mapNodeInventoryToRegisteredDeviceRow,
+} from "@/composables/DeviceRegistration/useDeviceInventory";
 import GatewayDetailModal from "@/components/Modals/Devices/GatewayDetailModal.vue";
 import BaseNodeDetailModal from "@/components/Modals/Devices/BaseNodeDetailModal.vue";
 import CommandDetailModal from "@/components/Modals/Devices/CommandDetailModal.vue";
 import RegisteredControlUrlDetailModal from "@/components/Modals/Devices/RegisteredControlUrlDetailModal.vue";
 import AddCommandSetupModal from "@/components/Modals/Devices/AddCommandSetupModal.vue";
-import BaseModal from "@/components/Modals/BaseModal.vue";
+import EditRegisteredControlUrlModal from "@/components/Modals/Devices/EditRegisteredControlUrlModal.vue";
 
 defineProps<{
   section: Section;
@@ -750,8 +687,6 @@ const {
   loadRegisteredControlUrls,
   isDeletingRegisteredControlUrl,
   handleDeleteRegisteredControlUrl,
-} = useRegisteredControlUrlTab({ loadingRef: isDeviceLoading });
-const {
   commandSetupRows,
   isCommandSetupModalOpen,
   isSavingCommandSetup,
@@ -773,7 +708,10 @@ const {
   canEditCommandSetup,
   canDeleteCommandSetup,
   handleDeleteCommandSetup,
-} = useCommandSetupTab({ loadingRef: isDeviceLoading });
+} = useControlDataTabs({
+  loadingRef: isDeviceLoading,
+  includeSoftDeleted: true,
+});
 const gatewayIdMap = ref<Record<string, string>>({});
 const isGatewayIdMapLoading = ref(false);
 const nodeIdMap = ref<Record<string, string>>({});
@@ -792,78 +730,6 @@ function setDeletingRegisteredDevice(row: DeviceRow, value: boolean) {
   deletingRegisteredDeviceMap.value = {
     ...deletingRegisteredDeviceMap.value,
     [getRegisteredDeviceKey(row)]: value,
-  };
-}
-
-function normalizeIndexRows(payload: any) {
-  return Array.isArray(payload?.data)
-    ? payload.data
-    : Array.isArray(payload)
-      ? payload
-      : [];
-}
-
-async function fetchAllPages(endpoint: string, authorization: string) {
-  const allRows: any[] = [];
-  let page = 1;
-  let lastPage = 1;
-
-  do {
-    const separator = endpoint.includes("?") ? "&" : "?";
-    const pagedEndpoint = `${endpoint}${separator}per_page=200&page=${page}`;
-    const response = await fetch(pagedEndpoint, {
-      headers: {
-        Authorization: authorization,
-        Accept: "application/json",
-      },
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new Error(payload?.message ?? "Failed to load registered devices.");
-    }
-
-    allRows.push(...normalizeIndexRows(payload));
-    lastPage = Number(payload?.last_page ?? payload?.meta?.last_page ?? 1);
-    page += 1;
-  } while (page <= lastPage);
-
-  return allRows;
-}
-
-function mapRegisteredGatewayRow(row: any): DeviceRow {
-  const externalId = row?.external_id ? String(row.external_id) : String(row?.id ?? "");
-  return {
-    id: externalId,
-    externalId,
-    resourceType: "gateway",
-    name: row?.name ?? `Gateway ${externalId}`,
-    ip: row?.ip_address ?? null,
-    mac: row?.mac_address ?? null,
-    type: "gateway",
-    status: row?.status === "online" ? "online" : "offline",
-    registered: true,
-    lastSeen: row?.last_seen ?? null,
-    createdAt: row?.created_at ?? null,
-    updatedAt: row?.updated_at ?? null,
-  };
-}
-
-function mapRegisteredNodeRow(row: any): DeviceRow {
-  const externalId = row?.external_id ? String(row.external_id) : String(row?.id ?? "");
-  return {
-    id: externalId,
-    externalId,
-    resourceType: "node",
-    name: row?.name ?? `Node ${externalId}`,
-    gatewayId: row?.gateway?.external_id ?? row?.gateway_id ?? null,
-    ip: row?.ip_address ?? null,
-    mac: row?.mac_address ?? null,
-    type: row?.type ?? null,
-    status: row?.status === "online" ? "online" : "offline",
-    registered: true,
-    lastSeen: row?.last_seen ?? null,
-    createdAt: row?.created_at ?? null,
-    updatedAt: row?.updated_at ?? null,
   };
 }
 
@@ -887,27 +753,17 @@ function sortByLatestThenId(a: DeviceRow, b: DeviceRow) {
 
 async function loadRegisteredDevices() {
   if (!import.meta.client) return;
-  if (!apiConfig.controlModule) return;
   const authorization = authStore.authorizationHeader;
   if (!authorization) return;
 
   isDeviceLoading.value = true;
   try {
-    const base = apiConfig.controlModule.replace(/\/$/, "");
-    const [gatewayPayload, nodePayload] = await Promise.all([
-      fetchAllPages(`${base}/gateways`, authorization),
-      fetchAllPages(`${base}/nodes?include=gateway`, authorization),
+    const [gatewayRows, nodeRows] = await Promise.all([
+      fetchGatewayInventoryRows(authorization),
+      fetchNodeInventoryRows(authorization),
     ]);
-    const mappedGateways = gatewayPayload
-      .filter((row: any) => row?.deleted_at == null)
-      .map(mapRegisteredGatewayRow);
-    const mappedNodes = nodePayload
-      .filter(
-        (row: any) =>
-          row?.deleted_at == null &&
-          (!row?.gateway || row?.gateway?.deleted_at == null),
-      )
-      .map(mapRegisteredNodeRow);
+    const mappedGateways = gatewayRows.map(mapGatewayInventoryToRegisteredDeviceRow);
+    const mappedNodes = nodeRows.map(mapNodeInventoryToRegisteredDeviceRow);
     registeredRows.value = [...mappedGateways, ...mappedNodes].sort(
       sortByLatestThenId,
     );
@@ -923,38 +779,15 @@ async function loadRegisteredDevices() {
 async function loadGatewayIdMap() {
   if (!import.meta.client) return;
   if (isGatewayIdMapLoading.value) return;
-  if (!apiConfig.controlModule) return;
 
   const authorization = authStore.authorizationHeader;
   if (!authorization) return;
 
   isGatewayIdMapLoading.value = true;
   try {
-    const endpoint = `${apiConfig.controlModule.replace(/\/$/, "")}/gateways`;
-    const response = await fetch(endpoint, {
-      headers: {
-        Authorization: authorization,
-        Accept: "application/json",
-      },
-    });
-
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new Error(payload?.message ?? "Failed to load gateways.");
-    }
-
-    const rows = Array.isArray(payload?.data)
-      ? payload.data
-      : Array.isArray(payload)
-        ? payload
-        : [];
-    const map: Record<string, string> = {};
-    rows.forEach((row: any) => {
-      if (row?.external_id && row?.id) {
-        map[row.external_id] = row.id;
-      }
-    });
-    gatewayIdMap.value = map;
+    gatewayIdMap.value = buildExternalToUuidMap(
+      await fetchGatewayInventoryRows(authorization),
+    );
   } catch (error) {
     console.error("Failed to load gateway IDs", error);
   } finally {
@@ -965,38 +798,15 @@ async function loadGatewayIdMap() {
 async function loadNodeIdMap() {
   if (!import.meta.client) return;
   if (isNodeIdMapLoading.value) return;
-  if (!apiConfig.controlModule) return;
 
   const authorization = authStore.authorizationHeader;
   if (!authorization) return;
 
   isNodeIdMapLoading.value = true;
   try {
-    const endpoint = `${apiConfig.controlModule.replace(/\/$/, "")}/nodes`;
-    const response = await fetch(endpoint, {
-      headers: {
-        Authorization: authorization,
-        Accept: "application/json",
-      },
-    });
-
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new Error(payload?.message ?? "Failed to load nodes.");
-    }
-
-    const rows = Array.isArray(payload?.data)
-      ? payload.data
-      : Array.isArray(payload)
-        ? payload
-        : [];
-    const map: Record<string, string> = {};
-    rows.forEach((row: any) => {
-      if (row?.external_id && row?.id) {
-        map[row.external_id] = row.id;
-      }
-    });
-    nodeIdMap.value = map;
+    nodeIdMap.value = buildExternalToUuidMap(
+      await fetchNodeInventoryRows(authorization),
+    );
   } catch (error) {
     console.error("Failed to load node IDs", error);
   } finally {
@@ -1451,7 +1261,18 @@ const currentDeviceRows = computed<DeviceRow[]>(
   () => currentDeviceTab.value.rows,
 );
 const filteredDeviceRows = computed<DeviceRow[]>(() =>
-  filterDeviceRows(currentDeviceRows.value)
+  filterDeviceRows(
+    currentDeviceRows.value.filter((row) => {
+      if (
+        activeDeviceTab.value === "registered" ||
+        activeDeviceTab.value === "registered_control_urls" ||
+        activeDeviceTab.value === "command_setup"
+      ) {
+        return !row.deletedAt;
+      }
+      return true;
+    }),
+  )
     .slice()
     .sort((a, b) => {
       if (
@@ -1622,18 +1443,40 @@ function formatDeviceStatus(status: DeviceRow["status"]) {
 }
 
 function formatRegistrationStatus(registered?: boolean) {
-  return registered ? "true" : "false";
+  if (registered === true) return "TRUE";
+  if (registered === false) return "FALSE";
+  return "N/A";
 }
 
-function registrationTextColorClass(registered?: boolean) {
-  return registered ? "text-blue-600" : "text-red-500";
+function registeredBadgeClass(registered?: boolean | null) {
+  const base =
+    "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
+
+  if (registered === true) {
+    return `${base} border-blue-200 bg-blue-50 text-blue-700`;
+  }
+
+  if (registered === false) {
+    return `${base} border-red-200 bg-red-50 text-red-700`;
+  }
+
+  return `${base} border-gray-200 bg-gray-100 text-gray-600`;
 }
 
-function statusTextColorClass(status?: DeviceRow["status"]) {
+function statusBadgeClass(status?: DeviceRow["status"]) {
+  const base =
+    "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
   const normalizedStatus = (status ?? "").toLowerCase() as DeviceRow["status"];
-  return ONLINE_DEVICE_STATUSES.has(normalizedStatus)
-    ? "text-blue-600"
-    : "text-red-500";
+
+  if (ONLINE_DEVICE_STATUSES.has(normalizedStatus)) {
+    return `${base} border-blue-200 bg-blue-50 text-blue-700`;
+  }
+
+  if (normalizedStatus === "offline") {
+    return `${base} border-red-200 bg-red-50 text-red-700`;
+  }
+
+  return `${base} border-gray-200 bg-gray-100 text-gray-600`;
 }
 
 function isOnlineExactStatus(status?: DeviceRow["status"]) {

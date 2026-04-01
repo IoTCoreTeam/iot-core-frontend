@@ -1,8 +1,8 @@
 <template>
   <section class="w-full">
     <a-tabs v-model:activeKey="activeTab" class="px-4 custom-tabs text-xs">
-      <a-tab-pane key="command_setup" tab="Command" />
       <a-tab-pane key="registered_control_urls" tab="Control URL" />
+            <a-tab-pane key="command_setup" tab="Command" />
     </a-tabs>
 
     <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
@@ -212,81 +212,14 @@
       :row="selectedRegisteredControlUrl"
       @close="closeRegisteredControlUrlDetail"
     />
-    <BaseModal
+    <EditRegisteredControlUrlModal
       :model-value="isRegisteredControlUrlEditOpen"
       title="Edit Control URL"
-      max-width="max-w-2xl"
-      panel-class="p-5 shadow-xl"
-      @request-close="closeRegisteredControlUrlEdit"
-    >
-      <div class="space-y-3 text-xs">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div class="flex flex-col gap-1">
-            <label class="text-gray-600 font-medium">Node External ID</label>
-            <input
-              :value="registeredControlUrlEditForm.node_external_id"
-              type="text"
-              class="border border-gray-300 rounded px-2 py-1.5 bg-gray-50 text-gray-500"
-              disabled
-            />
-          </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-gray-600 font-medium">Controller ID</label>
-            <input
-              v-model="registeredControlUrlEditForm.controller_id"
-              type="text"
-              class="border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-            />
-          </div>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div class="flex flex-col gap-1">
-            <label class="text-gray-600 font-medium">Control URL Name</label>
-            <input
-              v-model="registeredControlUrlEditForm.name"
-              type="text"
-              class="border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-            />
-          </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-gray-600 font-medium">Input Type</label>
-            <input
-              v-model="registeredControlUrlEditForm.input_type"
-              type="text"
-              class="border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-            />
-          </div>
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-gray-600 font-medium">URL</label>
-          <input
-            v-model="registeredControlUrlEditForm.url"
-            type="text"
-            class="border border-gray-300 rounded px-2 py-1.5 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-          />
-        </div>
-      </div>
-      <template #footer>
-        <div class="flex items-center justify-end gap-2">
-          <button
-            type="button"
-            class="px-3 py-1.5 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
-            :disabled="isSavingRegisteredControlUrlEdit"
-            @click="closeRegisteredControlUrlEdit"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="px-3 py-1.5 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
-            :disabled="isSavingRegisteredControlUrlEdit"
-            @click="saveRegisteredControlUrlEdit"
-          >
-            {{ isSavingRegisteredControlUrlEdit ? "Saving..." : "Update" }}
-          </button>
-        </div>
-      </template>
-    </BaseModal>
+      :form="registeredControlUrlEditForm"
+      :is-saving="isSavingRegisteredControlUrlEdit"
+      @close="closeRegisteredControlUrlEdit"
+      @save="saveRegisteredControlUrlEdit"
+    />
 
     <AddCommandSetupModal
       :model-value="isCommandSetupModalOpen"
@@ -310,14 +243,13 @@
 import { computed, onMounted, ref, watch } from "vue";
 import DataBoxCard from "@/components/common/DataBoxCard.vue";
 import AdvancedFilterPanel from "@/components/common/AdvancedFilterPanel.vue";
-import BaseModal from "@/components/Modals/BaseModal.vue";
 import CommandDetailModal from "@/components/Modals/Devices/CommandDetailModal.vue";
 import RegisteredControlUrlDetailModal from "@/components/Modals/Devices/RegisteredControlUrlDetailModal.vue";
 import AddCommandSetupModal from "@/components/Modals/Devices/AddCommandSetupModal.vue";
+import EditRegisteredControlUrlModal from "@/components/Modals/Devices/EditRegisteredControlUrlModal.vue";
 import type { DeviceRow, DeviceTabKey } from "@/types/devices-control";
 import { useDeviceFilter } from "@/composables/DeviceRegistration/DeviceFilter";
-import { useRegisteredControlUrlTab } from "@/composables/DeviceRegistration/useRegisteredControlUrlTab";
-import { useCommandSetupTab } from "@/composables/DeviceRegistration/useCommandSetupTab";
+import { useControlDataTabs } from "@/composables/DeviceRegistration/useControlDataTabs";
 import { useAuthStore } from "~~/stores/auth";
 import { apiConfig } from "~~/config/api";
 
@@ -358,12 +290,6 @@ const {
   loadRegisteredControlUrls,
   isDeletingRegisteredControlUrl,
   handleDeleteRegisteredControlUrl,
-} = useRegisteredControlUrlTab({
-  loadingRef: isLoading,
-  includeSoftDeleted: true,
-});
-
-const {
   commandSetupRows,
   isCommandSetupModalOpen,
   isSavingCommandSetup,
@@ -385,7 +311,8 @@ const {
   canEditCommandSetup,
   canDeleteCommandSetup,
   handleDeleteCommandSetup,
-} = useCommandSetupTab({
+  isSoftDeleted,
+} = useControlDataTabs({
   loadingRef: isLoading,
   includeSoftDeleted: true,
 });
@@ -494,10 +421,6 @@ function displayCellValue(columnKey: string, value: unknown) {
   }
   if (isIdColumn(columnKey) && isUuidValue(value)) return "N/A";
   return String(value);
-}
-
-function isSoftDeleted(row: DeviceRow) {
-  return Boolean(row.deletedAt);
 }
 
 function resolveCellValue(row: DeviceRow, columnKey: string) {

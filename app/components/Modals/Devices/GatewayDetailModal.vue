@@ -7,122 +7,140 @@
     @request-close="closeModal"
   >
     <div class="space-y-6 text-xs text-gray-700">
-      <!-- No data state -->
       <div
-        v-if="!gateway"
-        class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-gray-500 text-center"
+        v-if="!gatewayView"
+        class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-center text-gray-500"
       >
         Gateway information is unavailable.
       </div>
 
       <template v-else>
-        <!-- Gateway Information Section -->
         <section class="space-y-4">
-          <div class="flex items-center gap-3 pb-3 border-b border-gray-200"></div>
+          <div class="flex items-center justify-between border-b border-gray-200 pb-2">
+            <h4 class="text-xs font-semibold text-gray-700">Gateway Information</h4>
+            <span class="text-[10px] uppercase tracking-wider text-gray-500">
+              {{ gatewayView.externalId }}
+            </span>
+          </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <!-- ID -->
-            <div class="rounded bg-gray-50 p-3 border border-gray-200">
-              <p class="text-xs uppercase tracking-wider text-gray-500 font-medium mb-1">ID</p>
-              <p class="text-gray-900 text-xs break-all">{{ gateway.id }}</p>
-            </div>
-
-            <!-- Name -->
-            <div class="rounded bg-gray-50 p-3 border border-gray-200">
-              <p class="text-xs tracking-wider text-gray-500 font-medium mb-1">Name</p>
-              <p class="text-gray-900 text-xs">{{ gateway.name }}</p>
-            </div>
-
-            <!-- IP Address -->
-            <div class="rounded bg-gray-50 p-3 border border-gray-200">
-              <p class="text-xs tracking-wider text-gray-500 font-medium mb-1">IP Address</p>
-              <p class="text-gray-900 text-xs">{{ gateway.ip || "N/A" }}</p>
-            </div>
-
-            <!-- MAC Address -->
-            <div class="rounded bg-gray-50 p-3 border border-gray-200">
-              <p class="text-xs tracking-wider text-gray-500 font-medium mb-1">MAC Address</p>
-              <p class="text-gray-900 text-xs">{{ gateway.mac || "N/A" }}</p>
-            </div>
-
-            <!-- Last Seen -->
-            <div class="rounded bg-gray-50 p-3 border border-gray-200 md:col-span-2">
-              <p class="text-xs tracking-wider text-gray-500 font-medium mb-1">Last Seen</p>
-              <p class="text-gray-900 text-xs">{{ formatLastSeen(gateway.lastSeen) }}</p>
-            </div>
+          <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <table class="w-full text-xs">
+              <tbody>
+                <tr class="border-b border-gray-100">
+                  <td class="w-40 px-4 py-3 text-[10px] uppercase tracking-wider text-gray-500">
+                    Name
+                  </td>
+                  <td class="break-all px-4 py-3 text-gray-900">
+                    {{ gatewayView.name }}
+                  </td>
+                </tr>
+                <tr class="border-b border-gray-100">
+                  <td class="w-40 px-4 py-3 text-[10px] uppercase tracking-wider text-gray-500">
+                    UUID
+                  </td>
+                  <td class="break-all px-4 py-3 text-gray-900">
+                    {{ gatewayView.id }}
+                  </td>
+                </tr>
+                <tr class="border-b border-gray-100">
+                  <td class="w-40 px-4 py-3 text-[10px] uppercase tracking-wider text-gray-500">
+                    IP Address
+                  </td>
+                  <td class="break-all px-4 py-3 text-gray-900">
+                    {{ gatewayView.ip }}
+                  </td>
+                </tr>
+                <tr class="border-b border-gray-100">
+                  <td class="w-40 px-4 py-3 text-[10px] uppercase tracking-wider text-gray-500">
+                    MAC
+                  </td>
+                  <td class="break-all px-4 py-3 text-gray-900">
+                    {{ gatewayView.mac }}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="w-40 px-4 py-3 text-[10px] uppercase tracking-wider text-gray-500">
+                    Last Seen
+                  </td>
+                  <td class="px-4 py-3 text-gray-900">
+                    {{ gatewayView.lastSeen }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </section>
 
-        <!-- Connected Nodes Section -->
         <section class="space-y-4">
-          <DataBoxCard
-            :is-loading="false"
-            :has-data="pagedNodes.length > 0"
-            :columns="6"
-            :elevated="false"
-            :padded="false"
-            :pagination="{
-              page: nodesPage,
-              perPage: nodesPerPage,
-              lastPage: nodesLastPage,
-              total: nodesTotal,
-            }"
-            @prev-page="nodesPage = Math.max(1, nodesPage - 1)"
-            @next-page="nodesPage = Math.min(nodesLastPage, nodesPage + 1)"
-            @change-per-page="(value) => { nodesPerPage = value; nodesPage = 1; }"
-          >
-            <template #header>
-              <div></div>
-              <span class="text-xs text-gray-500">{{ nodesTotal }} connected nodes</span>
-            </template>
+          <div class="flex items-center justify-between border-b border-gray-200 pb-2">
+            <h4 class="text-xs font-semibold text-gray-700">Connected Nodes</h4>
+            <span class="text-[10px] uppercase tracking-wider text-gray-500">
+              {{ nodesTotal }} total
+            </span>
+          </div>
 
-            <template #head>
-              <tr class="bg-slate-50 border-b border-gray-200">
-                <th class="px-4 py-3 text-left font-semibold text-gray-600">ID</th>
-                <th class="px-4 py-3 text-left font-semibold text-gray-600">Name</th>
-                <th class="px-4 py-3 text-left font-semibold text-gray-600">MAC</th>
-                <th class="px-4 py-3 text-left font-semibold text-gray-600">Status</th>
-                <th class="px-4 py-3 text-left font-semibold text-gray-600">Registered</th>
-                <th class="px-4 py-3 text-left font-semibold text-gray-600">Last Seen</th>
-              </tr>
-            </template>
+          <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <DataBoxCard
+              :is-loading="false"
+              :has-data="pagedNodes.length > 0"
+              :columns="6"
+              :elevated="false"
+              :padded="false"
+              :pagination="{
+                page: nodesPage,
+                perPage: nodesPerPage,
+                lastPage: nodesLastPage,
+                total: nodesTotal,
+              }"
+              @prev-page="nodesPage = Math.max(1, nodesPage - 1)"
+              @next-page="nodesPage = Math.min(nodesLastPage, nodesPage + 1)"
+              @change-per-page="handleChangePerPage"
+            >
+              <template #head>
+                <tr class="border-b border-gray-200 bg-gray-50">
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">Node ID</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">Name</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">MAC</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">Status</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">Registered</th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600">Last Seen</th>
+                </tr>
+              </template>
 
-            <template #default>
-              <tr
-                v-for="node in pagedNodes"
-                :key="node.id"
-                class="border-b border-gray-100 hover:bg-slate-50 transition-colors duration-150"
-              >
-                <td class="px-4 py-3 text-gray-700 text-xs">{{ node.id }}</td>
-                <td class="px-4 py-3 text-gray-900 text-xs">{{ node.name }}</td>
-                <td class="px-4 py-3 text-gray-700 text-xs">{{ node.mac || "N/A" }}</td>
+              <template #default>
+                <tr
+                  v-for="node in pagedNodes"
+                  :key="node.id"
+                  class="border-b border-gray-100 text-xs transition-colors hover:bg-gray-50"
+                >
+                  <td class="px-4 py-3 text-gray-900">{{ formatValue(node.id) }}</td>
+                  <td class="px-4 py-3 text-gray-900">{{ formatValue(node.name) }}</td>
+                  <td class="px-4 py-3 text-gray-700">{{ formatValue(node.mac) }}</td>
+                  <td class="px-4 py-3">
+                    <span :class="statusBadgeClass(node.status)">
+                      {{ formatValue(node.status) }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-3">
+                    <span :class="registeredBadgeClass(node.registered)">
+                      {{ formatRegistered(node.registered) }}
+                    </span>
+                  </td>
+                  <td class="whitespace-nowrap px-4 py-3 text-gray-700">
+                    {{ formatLastSeen(node.lastSeen) }}
+                  </td>
+                </tr>
+              </template>
 
-                <!-- Status -->
-                <td class="px-4 py-3 text-left font-semibold text-xs">
-                  <span :class="statusTextClass(node.status)">{{ node.status }}</span>
-                </td>
+              <template #empty>
+                No nodes connected to this gateway.
+              </template>
 
-                <!-- Registered -->
-                <td class="px-4 py-3 text-left font-semibold text-xs">
-                  <span :class="registeredTextClass(node.registered)">
-                    {{ String(node.registered) }}
-                  </span>
-                </td>
-
-                <td class="px-4 py-3 text-gray-600 whitespace-nowrap text-xs">
-                  {{ formatLastSeen(node.lastSeen) }}
-                </td>
-              </tr>
-            </template>
-
-            <template #empty>
-              No nodes connected to this gateway.
-            </template>
-
-            <template #footer>
-              <span>Showing {{ pagedNodes.length }} of {{ nodesTotal }} entries.</span>
-            </template>
-          </DataBoxCard>
+              <template #footer>
+                <span>Showing {{ pagedNodes.length }} of {{ nodesTotal }} entries.</span>
+              </template>
+            </DataBoxCard>
+          </div>
         </section>
       </template>
     </div>
@@ -131,10 +149,10 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import BaseModal from "../BaseModal.vue";
 import DataBoxCard from "@/components/common/DataBoxCard.vue";
 import type { DeviceRow } from "@/types/devices-control";
 import { formatIotDateTime } from "~~/config/iot-time-format";
+import BaseModal from "../BaseModal.vue";
 
 const props = defineProps<{
   gateway: DeviceRow | null;
@@ -146,11 +164,67 @@ const emit = defineEmits<{
 }>();
 
 const isOpen = ref(true);
+const nodesPage = ref(1);
+const nodesPerPage = ref(5);
 
 const lastSeenFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
   timeStyle: "short",
 });
+
+const gatewayView = computed(() => {
+  const gateway = props.gateway;
+  if (!gateway) return null;
+
+  return {
+    id: formatValue(gateway.id),
+    externalId: formatValue(gateway.externalId ?? gateway.id),
+    name: formatValue(gateway.name),
+    ip: formatValue(gateway.ip),
+    mac: formatValue(gateway.mac),
+    lastSeen: formatLastSeen(gateway.lastSeen),
+  };
+});
+
+const normalizedNodes = computed(() =>
+  props.nodes.map((node) => ({
+    id: formatValue(node.id),
+    name: formatValue(node.name),
+    mac: node.mac ?? null,
+    status: node.status ?? null,
+    registered: node.registered ?? null,
+    lastSeen: node.lastSeen ?? null,
+  })),
+);
+
+const nodesTotal = computed(() => normalizedNodes.value.length);
+const nodesLastPage = computed(() =>
+  Math.max(1, Math.ceil(nodesTotal.value / Math.max(1, nodesPerPage.value))),
+);
+
+const pagedNodes = computed(() => {
+  const start = (nodesPage.value - 1) * nodesPerPage.value;
+  return normalizedNodes.value.slice(start, start + nodesPerPage.value);
+});
+
+watch(
+  () => props.gateway,
+  () => {
+    isOpen.value = true;
+    nodesPage.value = 1;
+  },
+);
+
+watch([nodesTotal, nodesLastPage], () => {
+  if (nodesPage.value > nodesLastPage.value) {
+    nodesPage.value = nodesLastPage.value;
+  }
+});
+
+function formatValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "N/A";
+  return String(value);
+}
 
 function formatLastSeen(value?: string | null) {
   return formatIotDateTime(value, {
@@ -159,57 +233,48 @@ function formatLastSeen(value?: string | null) {
   });
 }
 
+function formatRegistered(value?: boolean | null) {
+  if (value === true) return "TRUE";
+  if (value === false) return "FALSE";
+  return "N/A";
+}
+
+function statusBadgeClass(status?: string | null) {
+  const base = "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
+  const normalized = String(status ?? "").trim().toLowerCase();
+
+  if (normalized === "online") {
+    return `${base} border-blue-200 bg-blue-50 text-blue-700`;
+  }
+
+  if (normalized === "offline") {
+    return `${base} border-red-200 bg-red-50 text-red-700`;
+  }
+
+  return `${base} border-gray-200 bg-gray-100 text-gray-600`;
+}
+
+function registeredBadgeClass(registered?: boolean | null) {
+  const base = "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
+
+  if (registered === true) {
+    return `${base} border-blue-200 bg-blue-50 text-blue-700`;
+  }
+
+  if (registered === false) {
+    return `${base} border-red-200 bg-red-50 text-red-700`;
+  }
+
+  return `${base} border-gray-200 bg-gray-100 text-gray-600`;
+}
+
+function handleChangePerPage(value: number) {
+  nodesPerPage.value = value;
+  nodesPage.value = 1;
+}
+
 function closeModal() {
   isOpen.value = false;
   emit("close");
 }
-
-watch(
-  () => props.gateway,
-  () => {
-    isOpen.value = true;
-  }
-);
-
-const gateway = computed(() => props.gateway);
-const nodes = computed(() => props.nodes);
-
-const nodesPage = ref(1);
-const nodesPerPage = ref(5);
-const nodesTotal = computed(() => nodes.value.length);
-const nodesLastPage = computed(() =>
-  Math.max(1, Math.ceil(nodesTotal.value / Math.max(1, nodesPerPage.value))),
-);
-
-const pagedNodes = computed(() => {
-  const start = (nodesPage.value - 1) * nodesPerPage.value;
-  return nodes.value.slice(start, start + nodesPerPage.value);
-});
-
-watch([nodesTotal, nodesLastPage], () => {
-  if (nodesPage.value > nodesLastPage.value) {
-    nodesPage.value = nodesLastPage.value;
-  }
-});
-
-const statusTextClass = (status?: string | null) => {
-  if (!status) return "text-gray-500 uppercase";
-  const normalized = status.toLowerCase();
-  if (normalized === "online") return "text-blue-600 uppercase";
-  if (normalized === "offline") return "text-red-500 uppercase";
-  return "text-gray-500 uppercase";
-};
-
-const registeredTextClass = (registered?: boolean | null) => {
-  if (registered === true) return "text-blue-600 uppercase";
-  if (registered === false) return "text-red-500 uppercase";
-  return "text-gray-500 uppercase";
-};
 </script>
-
-<style scoped>
-/* Smooth table transitions */
-table tbody tr {
-  transition: background-color 150ms ease-in-out;
-}
-</style>

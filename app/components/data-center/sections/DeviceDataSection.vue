@@ -310,9 +310,15 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { apiConfig } from "~~/config/api";
 import { formatIotDateTime } from "~~/config/iot-time-format";
 import { useAuthStore } from "~~/stores/auth";
+import {
+  buildUuidToExternalIdMap,
+  fetchGatewayInventoryRows,
+  fetchNodeInventoryRows,
+  isSoftDeletedInventoryRow,
+  type DeviceInventoryRow,
+} from "@/composables/DeviceRegistration/useDeviceInventory";
 import AdvancedFilterPanel, {
   type FilterFieldRow,
 } from "@/components/common/AdvancedFilterPanel.vue";
@@ -321,21 +327,7 @@ import DeviceDataGatewayDetailModal from "@/components/Modals/Devices/DeviceData
 import BaseNodeDetailModal from "@/components/Modals/Devices/BaseNodeDetailModal.vue";
 import type { NodeInfo } from "@/types/devices-control";
 
-type DeviceDataRow = {
-  id: string;
-  external_id?: string | null;
-  name?: string | null;
-  gateway_id?: string | null;
-  mac_address?: string | null;
-  ip_address?: string | null;
-  type?: string | null;
-  status?: string | null;
-  registered?: boolean | null;
-  last_seen?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  deleted_at?: string | null;
-};
+type DeviceDataRow = DeviceInventoryRow;
 
 type GatewayFilterState = {
   external_id: string;
@@ -353,7 +345,6 @@ type NodeFilterState = {
   ip_address: string;
 };
 
-const CONTROL_MODULE_BASE_URL = (apiConfig.controlModule || "").replace(/\/$/, "");
 const authStore = useAuthStore();
 const activeTab = ref<"gateway" | "node">("gateway");
 
@@ -532,31 +523,13 @@ function formatDateTime(value?: string | null) {
 }
 
 function isSoftDeleted(row: DeviceDataRow) {
-  return Boolean(row.deleted_at);
+  return isSoftDeletedInventoryRow(row);
 }
 
 function resolveGatewayId(gatewayUuid?: string | null) {
   const key = String(gatewayUuid ?? "");
   if (!key) return "-";
   return gatewayUuidToExternalIdMap.value[key] ?? key;
-}
-
-function mapDeviceRow(row: any): DeviceDataRow {
-  return {
-    id: String(row?.id ?? row?.external_id ?? ""),
-    external_id: row?.external_id ?? null,
-    name: row?.name ?? null,
-    gateway_id: row?.gateway_id ?? null,
-    mac_address: row?.mac_address ?? null,
-    ip_address: row?.ip_address ?? null,
-    type: row?.type ?? null,
-    status: row?.status ?? null,
-    registered: typeof row?.registered === "boolean" ? row.registered : null,
-    last_seen: row?.last_seen ?? null,
-    created_at: row?.created_at ?? null,
-    updated_at: row?.updated_at ?? null,
-    deleted_at: row?.deleted_at ?? null,
-  };
 }
 
 function mapDeviceDataRowToNodeInfo(row: DeviceDataRow): NodeInfo {
@@ -572,42 +545,6 @@ function mapDeviceDataRowToNodeInfo(row: DeviceDataRow): NodeInfo {
     registered: row.registered ?? null,
     last_seen: row.last_seen ?? row.created_at ?? null,
   };
-}
-
-function normalizeIndexRows(payload: any) {
-  return Array.isArray(payload?.data)
-    ? payload.data
-    : Array.isArray(payload)
-      ? payload
-      : [];
-}
-
-async function fetchAllPages(endpoint: string, authorization: string) {
-  const allRows: any[] = [];
-  let page = 1;
-  let lastPage = 1;
-
-  do {
-    const separator = endpoint.includes("?") ? "&" : "?";
-    const pagedEndpoint = `${endpoint}${separator}per_page=200&page=${page}`;
-    const response = await fetch(pagedEndpoint, {
-      headers: {
-        Authorization: authorization,
-        Accept: "application/json",
-      },
-    });
-
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new Error(payload?.message ?? "Failed to load rows.");
-    }
-
-    allRows.push(...normalizeIndexRows(payload));
-    lastPage = Number(payload?.last_page ?? payload?.meta?.last_page ?? 1);
-    page += 1;
-  } while (page <= lastPage);
-
-  return allRows;
 }
 
 function recalculateGatewayPagination() {
@@ -739,7 +676,7 @@ function changeNodePerPage(value: number) {
 }
 
 async function fetchGatewayRows() {
-  if (!import.meta.client || !CONTROL_MODULE_BASE_URL) return;
+  if (!import.meta.client) return;
 
   const authorization = authStore.authorizationHeader;
   if (!authorization) {
@@ -751,28 +688,9 @@ async function fetchGatewayRows() {
 
   isGatewayLoading.value = true;
   try {
-    const rows = await fetchAllPages(`${CONTROL_MODULE_BASE_URL}/gateways?include=all`, authorization);
-    const mapped = rows.map(mapDeviceRow);
-
-    const nextGatewayMap: Record<string, string> = {};
-    mapped.forEach((gateway) => {
-      if (gateway.id) {
-        nextGatewayMap[gateway.id] = String(gateway.external_id ?? gateway.id);
-      }
-    });
-    gatewayUuidToExternalIdMap.value = nextGatewayMap;
-
-    gatewayRows.value = mapped.sort((a, b) => {
-      const aDeleted = isSoftDeleted(a);
-      const bDeleted = isSoftDeleted(b);
-      if (aDeleted !== bDeleted) {
-        return aDeleted ? 1 : -1;
-      }
-      return String(a.external_id ?? "").localeCompare(String(b.external_id ?? ""), undefined, {
-        numeric: true,
-        sensitivity: "base",
-      });
-    });
+    const mapped = await fetchGatewayInventoryRows(authorization);
+    gatewayUuidToExternalIdMap.value = buildUuidToExternalIdMap(mapped);
+    gatewayRows.value = mapped;
     recalculateGatewayPagination();
   } catch (error) {
     console.error("Failed to fetch gateways:", error);
@@ -785,7 +703,7 @@ async function fetchGatewayRows() {
 }
 
 async function fetchNodeRows() {
-  if (!import.meta.client || !CONTROL_MODULE_BASE_URL) return;
+  if (!import.meta.client) return;
 
   const authorization = authStore.authorizationHeader;
   if (!authorization) {
@@ -796,35 +714,12 @@ async function fetchNodeRows() {
 
   isNodeLoading.value = true;
   try {
-    const [rows, gateways] = await Promise.all([
-      fetchAllPages(`${CONTROL_MODULE_BASE_URL}/nodes?include=all`, authorization),
-      fetchAllPages(`${CONTROL_MODULE_BASE_URL}/gateways?include=all`, authorization),
+    const [nodes, gateways] = await Promise.all([
+      fetchNodeInventoryRows(authorization),
+      fetchGatewayInventoryRows(authorization),
     ]);
-
-    const nextGatewayMap: Record<string, string> = {};
-    gateways.forEach((gateway: any) => {
-      if (gateway?.id) {
-        nextGatewayMap[String(gateway.id)] = String(gateway?.external_id ?? gateway.id);
-      }
-    });
-    gatewayUuidToExternalIdMap.value = {
-      ...gatewayUuidToExternalIdMap.value,
-      ...nextGatewayMap,
-    };
-
-    nodeRows.value = rows
-      .map(mapDeviceRow)
-      .sort((a, b) => {
-        const aDeleted = isSoftDeleted(a);
-        const bDeleted = isSoftDeleted(b);
-        if (aDeleted !== bDeleted) {
-          return aDeleted ? 1 : -1;
-        }
-        return String(a.external_id ?? "").localeCompare(String(b.external_id ?? ""), undefined, {
-          numeric: true,
-          sensitivity: "base",
-        });
-      });
+    gatewayUuidToExternalIdMap.value = buildUuidToExternalIdMap(gateways);
+    nodeRows.value = nodes;
 
     recalculateNodePagination();
   } catch (error) {
