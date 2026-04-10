@@ -6,6 +6,7 @@ import {
   normalizeSensorType,
   type SensorQueryRow,
 } from "@/composables/metrics/sensorPayload";
+import { useAuthStore } from "~~/stores/auth";
 
 const BASE_URL = (apiConfig.server || "").replace(/\/$/, "");
 const MAX_POINTS = 30;
@@ -66,13 +67,22 @@ export function useMetricQuery(props: UseMetricQueryProps) {
       fetchedSeries.value = [];
       return;
     }
+    const authStore = useAuthStore();
+    const authorization = authStore.authorizationHeader;
+    if (!authorization) {
+      fetchedSeries.value = [];
+      return;
+    }
 
     isFetching.value = true;
     fetchError.value = null;
 
     try {
       const res = await fetch(
-        `${BASE_URL}/v1/sensors/query?${buildParams()}`
+        `${BASE_URL}/v1/sensors/query?${buildParams()}`,
+        {
+          headers: { Authorization: authorization },
+        },
       );
       if (!res.ok) throw new Error("API error");
       const payload = await res.json();

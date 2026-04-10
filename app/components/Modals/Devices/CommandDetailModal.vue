@@ -6,7 +6,7 @@
     panel-class="p-6 shadow-xl"
     @request-close="$emit('close')"
   >
-    <div class="space-y-6 text-xs text-gray-700">
+    <div class="space-y-5 text-xs text-gray-700">
       <div
         v-if="!row"
         class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-gray-500 text-center"
@@ -15,11 +15,10 @@
       </div>
 
       <template v-else>
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <section class="space-y-4">
-            <div class="flex items-center justify-between pb-3 border-b border-gray-200">
+            <div class="flex items-center justify-between border-b border-gray-200 pb-2">
               <h4 class="text-xs font-semibold text-gray-700">Control URL</h4>
-              
             </div>
 
             <div class="rounded-lg border border-gray-200 bg-white overflow-hidden">
@@ -78,8 +77,8 @@
             </div>
           </section>
 
-          <section class="space-y-4 lg:pl-6 lg:border-l lg:border-gray-200">
-            <div class="flex items-center justify-between pb-3 border-b border-gray-200">
+          <section class="space-y-4 lg:border-l lg:border-gray-200 lg:pl-6">
+            <div class="flex items-center justify-between border-b border-gray-200 pb-2">
               <h4 class="text-xs font-semibold text-gray-700">Command</h4>
               <span class="text-[10px] uppercase tracking-wider text-gray-500">
                 {{ formatValue(commandDetail.type) }}
@@ -157,10 +156,10 @@
                   </template>
                   <tr v-else>
                     <td colspan="2" class="px-4 py-3 text-gray-900">
-                      <div class="mb-2 text-gray-500 uppercase tracking-wider text-[10px]">
+                      <div class="mb-2 text-[10px] uppercase tracking-wider text-gray-500">
                         JSON Payload
                       </div>
-                      <pre class="block w-full max-h-[40vh] overflow-y-auto rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] leading-6 whitespace-pre-wrap break-all">{{ commandPayloadText }}</pre>
+                      <pre class="block w-full max-h-[40vh] overflow-y-auto rounded border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] leading-5 whitespace-pre-wrap break-all">{{ commandPayloadText }}</pre>
                     </td>
                   </tr>
                 </tbody>

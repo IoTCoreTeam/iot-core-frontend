@@ -739,6 +739,12 @@ function toggleSensorPin(row: SensorDeviceRow) {
 
 async function fetchSensorDataRows() {
   if (!import.meta.client || !SERVER_BASE_URL) return;
+  const authorization = authStore.authorizationHeader;
+  if (!authorization) {
+    sensorDataRows.value = [];
+    recalculateSensorDataPagination();
+    return;
+  }
 
   isSensorDataLoading.value = true;
   try {
@@ -760,6 +766,7 @@ async function fetchSensorDataRows() {
       method: "GET",
       headers: {
         Accept: "application/json",
+        Authorization: authorization,
       },
     });
 

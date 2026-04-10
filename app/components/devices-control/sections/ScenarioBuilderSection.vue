@@ -992,11 +992,13 @@ function saveConditionNode() {
 async function fetchMetricNodes() {
   const base = (apiConfig.server || "").replace(/\/$/, "");
   if (!base) return;
+  const authorization = authStore.authorizationHeader;
+  if (!authorization) return;
   if (isMetricNodesLoading.value) return;
   isMetricNodesLoading.value = true;
   try {
     const response = await fetch(`${base}/v1/metrics/nodes`, {
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", Authorization: authorization },
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {

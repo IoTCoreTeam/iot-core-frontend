@@ -6,6 +6,7 @@ import {
   type ControlLogFilterState,
   type ControlLogRow,
 } from "@/types/control-ack";
+import { useAuthStore } from "~~/stores/auth";
 
 type ControlAckOverviewResponse = {
   bucket?: string;
@@ -52,12 +53,21 @@ export function useControlAckApi(serverBaseUrl: string) {
         totals: { ...DEFAULT_CONTROL_ACK_TOTALS },
       };
     }
+    const authStore = useAuthStore();
+    const authorization = authStore.authorizationHeader;
+    if (!authorization) {
+      return {
+        bucket: DEFAULT_CONTROL_ACK_BUCKET,
+        buckets: [] as ControlAckBucket[],
+        totals: { ...DEFAULT_CONTROL_ACK_TOTALS },
+      };
+    }
 
     const response = await fetch(
       `${SERVER_BASE_URL}/v1/control-acks/overview?hours=${hours}&bucket=${bucket}`,
       {
         method: "GET",
-        headers: { Accept: "application/json" },
+        headers: { Accept: "application/json", Authorization: authorization },
       },
     );
 
@@ -80,6 +90,11 @@ export function useControlAckApi(serverBaseUrl: string) {
     if (!import.meta.client || !SERVER_BASE_URL) {
       return [] as ControlLogRow[];
     }
+    const authStore = useAuthStore();
+    const authorization = authStore.authorizationHeader;
+    if (!authorization) {
+      return [] as ControlLogRow[];
+    }
 
     const params = new URLSearchParams();
     params.set("limit", String(limit));
@@ -99,7 +114,7 @@ export function useControlAckApi(serverBaseUrl: string) {
 
     const response = await fetch(`${SERVER_BASE_URL}/v1/control-acks/query?${params.toString()}`, {
       method: "GET",
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", Authorization: authorization },
     });
 
     const payload = await parseJsonResponse(response);

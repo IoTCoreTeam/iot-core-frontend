@@ -95,6 +95,7 @@ import {
   PINNED_SENSOR_IDS_UPDATED_EVENT,
   readPinnedSensorIds,
 } from "~~/config/pinned-sensors";
+import { useAuthStore } from "~~/stores/auth";
 
 interface MetricWidgetItem {
   key: string;
@@ -114,6 +115,7 @@ interface MetricWidgetItem {
 }
 
 const BASE_URL = (apiConfig.server || "").replace(/\/$/, "");
+const authStore = useAuthStore();
 const isLoading = ref(false);
 const isRefreshing = ref(false);
 const hasLoadedOnce = ref(false);
@@ -185,13 +187,18 @@ const buildPinnedDefaultWidget = (
 };
 
 const fetchLatestByNodeAndMetric = async (nodeId: string, metricType: string) => {
+  const authorization = authStore.authorizationHeader;
+  if (!authorization) return null;
+
   const params = new URLSearchParams();
   params.set("node_id", nodeId);
   params.set("sensor_type", metricType);
   params.set("limit", "1");
   params.set("page", "1");
 
-  const res = await fetch(`${BASE_URL}/v1/sensors/query?${params.toString()}`);
+  const res = await fetch(`${BASE_URL}/v1/sensors/query?${params.toString()}`, {
+    headers: { Authorization: authorization },
+  });
   if (!res.ok) {
     throw new Error(`API error ${res.status}`);
   }

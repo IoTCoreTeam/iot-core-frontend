@@ -1,5 +1,6 @@
 import type { DashboardMetric } from "@/types/dashboard";
 import { apiConfig } from "~~/config/api";
+import { useAuthStore } from "~~/stores/auth";
 
 const METRICS_STATE_KEY = "metrics_state";
 const METRICS_LOADING_KEY = "metrics_loading";
@@ -21,9 +22,12 @@ function getBaseUrl() {
 
 async function fetchMetrics(force = false) {
   const { metrics, isLoading, error, hasLoaded } = getMetricsState();
+  const authStore = useAuthStore();
+  const authorization = authStore.authorizationHeader;
 
   if (hasLoaded.value && !force) return;
   if (isLoading.value) return;
+  if (!authorization) return;
   const base = getBaseUrl();
   if (!base) {
     metrics.value = [];
@@ -34,7 +38,7 @@ async function fetchMetrics(force = false) {
   error.value = null;
   try {
     const response = await fetch(`${base}/v1/metrics`, {
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", Authorization: authorization },
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
